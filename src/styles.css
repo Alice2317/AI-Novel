@@ -50,3 +50,6 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 
 /* v0.8 compact create action in story list header */
 .sidebar>.label:has(.story-list-actions){display:flex;align-items:center;justify-content:space-between;gap:8px}.story-list-actions{display:inline-flex;align-items:center;gap:12px}.create-story-icon{width:29px;height:29px;display:grid;place-items:center;border:1px solid transparent;background:transparent;color:#c9b6ff;border-radius:7px;font-size:23px;line-height:1;cursor:pointer}.create-story-icon:hover,.create-story-icon:focus-visible{background:#343047;border-color:#51476b;outline:none}.messages .message.system{display:none}
+
+/* v0.9 compact story action and clean status boundary */
+.create-story-icon{width:22px;height:22px;font-size:16px;font-weight:400;padding:0;line-height:1}.story-list-actions{gap:8px}.story-fixed{border-bottom:0}.story-context .delete-story{color:#f1a0a8}.story-context .delete-story:hover{background:#493039}
