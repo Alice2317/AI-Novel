@@ -31,7 +31,7 @@ export default function App(){
  const openEditor=()=>{setDraft({...story});setEditing(true);setDetails(true)};
  const saveSettings=()=>{if(!draft.title.trim()){notify('請先輸入故事名稱');return}setStories(p=>p.map(s=>s.id===active?{...s,...draft,title:draft.title.trim()}:s));setEditing(false);notify('故事設定已保存')};
  const updateMessages=next=>setAllMessages(p=>({...p,[active]:typeof next==='function'?next(p[active]||welcome):next}));
- const send=()=>{if(!input.trim())return;const value=input.trim();updateMessages(p=>[...p,{role:'user',text:value},{role:'assistant',text:'已收到你的輸入。正式接上 AI 敘事引擎後，系統會先檢查玩家控制權、角色知情範圍、故事狀態與觸發條件，再生成後續正文。\n\n目前這是前端原型，尚未連接 AI API。'}]);setInput('')};
+ const send=()=>{if(!input.trim())return;const value=input.trim();updateMessages(p=>[...p,{role:'user',text:value,mode:inputMode}]);setInput('');notify(inputMode==='os'?'OS 已記錄為玩家私有輸入；目前展示模式不會傳給 NPC。':'輸入已記錄；目前尚未連接 AI，故事不會自動推進。')};
  const modeLabel=mode=>mode==='active'?'啟用原作線（C-2）':mode==='reference'?'只參照原作設定（C-3）':'無原作（C-1）';
  return <div className="app">
  <aside className={'sidebar '+(nav?'open':'')}><div className="brand"><div className="logo">S</div><div><b>Storyloom</b><small>AI NOVEL STUDIO</small></div><button className="mobile close" onClick={()=>setNav(false)}>×</button></div>
