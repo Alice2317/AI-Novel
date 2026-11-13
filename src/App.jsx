@@ -1,6 +1,8 @@
 import React,{useEffect,useMemo,useState} from 'react';
 
 const STORE_KEY='storyloom.frontend.v0.2';
+const WORKSPACE_KEY='storyloom.visibleWorkspaces.v1';
+const WORKSPACES=[{id:'story',name:'故事工作台',icon:'▤'},{id:'library',name:'原作資料庫',icon:'▧'},{id:'archive',name:'備份與結算',icon:'◷'}];
 const starterStories=[
  {id:'ST-01',title:'未命名的故事',genre:'原創世界',status:'進行中',summary:'',originalMode:'none'},
  {id:'ST-02',title:'新故事企劃',genre:'待設定',status:'草稿',summary:'',originalMode:'none'}
@@ -16,6 +18,8 @@ export default function App(){
  const [input,setInput]=useState('');
  const [inputMode,setInputMode]=useState('action');
  const [tab,setTab]=useState('story');
+ const [visibleWorkspaces,setVisibleWorkspaces]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(WORKSPACE_KEY));if(Array.isArray(saved))return saved.filter(id=>WORKSPACES.some(w=>w.id===id)).slice(0,3)}catch{}return WORKSPACES.slice(0,3).map(w=>w.id)});
+ const [workspaceMenu,setWorkspaceMenu]=useState(null);
  const [nav,setNav]=useState(false);
  const [details,setDetails]=useState(false);
  const [leftOpen,setLeftOpen]=useState(true);
@@ -29,6 +33,9 @@ export default function App(){
  const [detailWidth,setDetailWidth]=useState(290);
  const [dragging,setDragging]=useState(null);
  useEffect(()=>{if(!dragging)return;const move=e=>{if(window.innerWidth<=1050)return;const maxLeft=Math.min(480,window.innerWidth-(details?detailWidth:0)-380);if(dragging==='left')setSidebarWidth(Math.max(190,Math.min(maxLeft,e.clientX)));else if(dragging==='right')setDetailWidth(Math.max(240,Math.min(520,window.innerWidth-e.clientX)))};const stop=()=>setDragging(null);window.addEventListener('pointermove',move);window.addEventListener('pointerup',stop);window.addEventListener('pointercancel',stop);return()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',stop);window.removeEventListener('pointercancel',stop)}},[dragging,details,detailWidth]);
+ useEffect(()=>{try{localStorage.setItem(WORKSPACE_KEY,JSON.stringify(visibleWorkspaces))}catch{}},[visibleWorkspaces]);
+ const switchWorkspace=id=>{setTab(id);setWorkspaceMenu(null);setNav(false);setDetails(false)};
+ const toggleWorkspace=id=>setVisibleWorkspaces(current=>current.includes(id)?current.filter(x=>x!==id):current.length<3?[...current,id]:current);
  const story=stories.find(s=>s.id===active)||stories[0];
  const messages=allMessages[active]||welcome;
  const turns=useMemo(()=>messages.filter(m=>m.role==='user').length,[messages]);
@@ -49,9 +56,11 @@ export default function App(){
  const modeLabel=mode=>mode==='active'?'啟用原作線（C-2）':mode==='reference'?'只參照原作設定（C-3）':'無原作（C-1）';
  return <div onClick={()=>contextMenu&&setContextMenu(null)} style={{'--sidebar-width':sidebarWidth+'px','--detail-width':detailWidth+'px'}} className={'app '+(leftOpen?'':'sidebar-collapsed')+' '+(details?'':'details-collapsed')+(dragging?' is-resizing':'')}>
  <aside className={'sidebar '+(nav?'open':'')}>
- <div className="sidebar-head"><span>故事清單</span><button className="sidebar-toggle" onClick={()=>{setLeftOpen(false);setNav(false)}} title="收合故事清單" aria-label="收合故事清單">×</button></div><div className="label">工作區</div>
- <button className={'nav '+(tab==='story'?'chosen':'')} onClick={()=>setTab('story')}>▤　故事工作台</button><button className={'nav '+(tab==='library'?'chosen':'')} onClick={()=>setTab('library')}>▧　原作資料庫</button><button className={'nav '+(tab==='archive'?'chosen':'')} onClick={()=>setTab('archive')}>◷　備份與結算</button>
- <div className="label">我的故事 <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={create} title="建立新故事" aria-label="建立新故事">＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{s.title}<small>{s.status}</small></span></button></div>)}</div></aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label="調整故事清單寬度" onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
+ <div className="sidebar-head"><span>工作區</span><button className="sidebar-toggle" onClick={()=>{setLeftOpen(false);setNav(false)}} title="收合故事清單" aria-label="收合故事清單">×</button></div><div className="workspace-heading"><span>工作區</span><button className="workspace-config-trigger" title="自訂工作區顯示" aria-label="自訂工作區顯示" aria-expanded={workspaceMenu==='config'} onClick={()=>setWorkspaceMenu(p=>p==='config'?null:'config')}>⚙</button></div>
+ {workspaceMenu==='config'&&<div className="workspace-config"><div className="workspace-config-title">選擇完整顯示的工作區 <small>{visibleWorkspaces.length}/3</small></div>{WORKSPACES.map(w=><label key={w.id}><input type="checkbox" checked={visibleWorkspaces.includes(w.id)} disabled={!visibleWorkspaces.includes(w.id)&&visibleWorkspaces.length>=3} onChange={()=>toggleWorkspace(w.id)}/><span>{w.icon}　{w.name}</span></label>)}<p>最多顯示 3 個，其餘放在「…其他」。</p></div>}
+ {WORKSPACES.filter(w=>visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} className={'nav '+(tab===w.id?'chosen':'')} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{w.name}</button>)}
+ {WORKSPACES.some(w=>!visibleWorkspaces.includes(w.id))&&<div className="workspace-other-wrap"><button className={'nav '+(!visibleWorkspaces.includes(tab)?'chosen':'')} aria-expanded={workspaceMenu==='other'} onClick={()=>setWorkspaceMenu(p=>p==='other'?null:'other')}>⋯　其他 <span className="other-chevron">⌄</span></button>{workspaceMenu==='other'&&<div className="workspace-other">{WORKSPACES.filter(w=>!visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{w.name}</button>)}</div>}</div>}
+ {tab==='story'&&<><div className="label">我的故事 <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={create} title="建立新故事" aria-label="建立新故事">＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{s.title}<small>{s.status}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label="調整故事清單寬度" onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
  {nav&&<button className="scrim" onClick={()=>setNav(false)}/>}
  <main><header><button className="hamb" onClick={()=>setNav(true)}>☰</button>{!leftOpen&&<button className="desktop-toggle" onClick={()=>setLeftOpen(true)} title="展開故事清單" aria-label="展開故事清單">☰</button>}<div className="crumb">{tab==='story'?<button className="story-title-menu" onClick={e=>openStoryMenu(e,story)} onContextMenu={e=>showMenu(e,story)} aria-label={"開啟"+story.title+"的故事選單"}>{story.title}<span aria-hidden="true">⌄</span></button>:<b>{tab==='library'?'原作資料庫':'備份與結算'}</b>}</div></header>
  {tab==='story'?<div className="layout"><section className="content"><div className="story-fixed"><div className="fixed-status"><button className="fixed-status-title" onClick={()=>setStatusOpen(!statusOpen)} aria-expanded={statusOpen}><span>◷　故事狀態</span><span>{statusOpen?"⌃":"⌄"}</span></button>{statusOpen&&<div className="fixed-status-grid"><div><small>故事時間</small><b>尚未設定</b></div><div><small>目前地點</small><b>尚未設定</b></div><div><small>目前章節</small><b>尚未分卷</b></div><div><small>劇情階段</small><b>尚未設定</b></div></div>}</div></div><div className="story-scroll">
