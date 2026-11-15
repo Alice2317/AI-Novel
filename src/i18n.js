@@ -5,6 +5,21 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "原作篇章／大綱": "Source chapters and outlines",
+  "關鍵字": "Keywords",
+  "分組": "Group",
+  "未分組": "Ungrouped",
+  "所屬": "Affiliation",
+  "種族": "Species",
+  "袍級": "Robe rank",
+  "能力": "Abilities",
+  "裝備": "Equipment",
+  "首次登場": "First appearance",
+  "揭露條件": "Reveal conditions",
+  "篇章排序": "Chapter order",
+  "篇章排序請輸入正整數": "Enter a positive whole number for chapter order.",
+  "搜尋標題、關鍵字或內文…": "Search titles, keywords, or content…",
+  "找不到符合的資料。": "No matching entries.",
   "無法讀取資料庫，請確認後端已啟動": "Could not load the library. Check that the backend is running.",
   "資料庫已變更，請重新整理再儲存": "The library changed. Reload before saving.",
   "目前沒有故事": "No stories yet",

@@ -89,11 +89,27 @@ function libraryEntries(value: unknown) {
       const itemId = textField(item.id, 'id', 100, true);
       if (itemIds.has(itemId)) throw new RequestError(400, 'Duplicate library item ID');
       itemIds.add(itemId);
-      if (!['世界觀','角色資料','人物關係','設定與規則','參考文件'].includes(item.category)) {
+      if (!['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'].includes(item.category)) {
         throw new RequestError(400, 'Invalid library category');
       }
       textField(item.title, 'title', 500, true);
       textField(item.content, 'content', 50000);
+      if (item.keywords !== undefined) textField(item.keywords, 'keywords', 500);
+      if (item.group !== undefined) textField(item.group, 'group', 100);
+      if (item.order !== undefined && (!Number.isInteger(item.order) || item.order < 1 || item.order > 1000000)) {
+        throw new RequestError(400, 'Invalid chapter order');
+      }
+      if (item.profile !== undefined) {
+        if (!item.profile || typeof item.profile !== 'object' || Array.isArray(item.profile)) {
+          throw new RequestError(400, 'Invalid character profile');
+        }
+        for (const [key, value] of Object.entries(item.profile)) {
+          if (!['affiliation','species','rank','abilities','equipment','appearance','reveal'].includes(key)) {
+            throw new RequestError(400, 'Unknown character field');
+          }
+          textField(value, key, 500);
+        }
+      }
     }
   }
   return JSON.stringify(value);

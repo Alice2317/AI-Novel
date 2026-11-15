@@ -68,3 +68,15 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 
 .workspace-config .workspace-language{flex-wrap:wrap;justify-content:space-between;gap:8px;margin-bottom:10px}
 .workspace-language select{max-width:100%;font:inherit;color:inherit;background:#242637;border:1px solid #48435e;border-radius:6px;padding:5px}
+
+.library-item-search{width:100%;margin:0 0 10px}
+.library-keywords{display:block;margin:6px 0;color:#b6a7f1;overflow-wrap:anywhere}
+.library-character-group>summary{cursor:pointer;padding:10px 0;color:#c5b8f4}
+.character-fields{display:grid;gap:6px;margin:10px 0;font-size:12px}
+.character-fields>div{display:grid;grid-template-columns:minmax(55px,auto) minmax(0,1fr);gap:8px}
+.character-fields dt{color:#a8a1bc}
+.character-fields dd{margin:0;overflow-wrap:anywhere}
+.library-content{overflow-wrap:anywhere;line-height:1.7}
+.library-content :is(h3,h4,h5,h6){margin:12px 0 4px;font-size:13px;color:#e8e2fa}
+.library-content ul{padding-inline-start:20px;margin:6px 0 10px;font-size:12px}
+.library-content li+li{margin-top:4px}
