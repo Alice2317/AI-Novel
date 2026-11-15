@@ -2,16 +2,44 @@
 
 初版供本機單人開發使用，API 綁定 `127.0.0.1`。需要 Node.js 24 與可連線的 PostgreSQL。前端目前仍使用瀏覽器儲存。
 
-1. 在 PostgreSQL 建立空資料庫，例如 `ai_novel`。
-2. 在本目錄建立 `.env`，填入自己的連線設定。
+## 用 Docker Desktop 準備 PostgreSQL
 
-   ```dotenv
-   DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/ai_novel
-   PORT=3001
-   ```
+在 Windows 開啟 Docker Desktop，接著從專案根目錄的 PowerShell 執行：
 
-3. 在本目錄執行 `npm ci`、`npm start`。程式啟動時會建立故事資料表。
-4. 執行 `npm run check` 檢查 TypeScript 型別。
+```powershell
+cd backend
+Copy-Item .env.example .env
+```
+
+已有 `.env` 時，保留原檔，參考 `.env.example` 更新需要的欄位。把 `.env` 裡兩處 `REPLACE_WITH_YOUR_LOCAL_PASSWORD` 換成自己的同一組密碼。若密碼在連線網址中含有特殊字元，例如 `@`，只在 `DATABASE_URL` 內編碼成 `%40`。
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+等 PostgreSQL 顯示 `healthy`，用 DBeaver 新增 PostgreSQL 連線。
+
+| 欄位 | 填寫 |
+|---|---|
+| Host | `127.0.0.1` |
+| Port | `5434` |
+| Database | `ai_novel` |
+| Username | `ai_novel` |
+| Password | `.env` 的 `POSTGRES_PASSWORD` |
+
+按「測試連線」，成功後按 Finish。預設使用 5434，避開課程範例的 5432 和 5433。若修改 `DB_PORT`，也要同步更新 `DATABASE_URL` 和 DBeaver。Docker 會在首次初始化時建立資料庫。平常可用 `docker compose stop` 暫停，資料會保留在 volume。
+
+## 啟動 API
+
+在 `backend` 執行：
+
+```powershell
+npm ci
+npm start
+```
+
+API 第一次啟動會在 `ai_novel` 裡建立 `stories` 表。若已有 PostgreSQL，也可直接讓 `DATABASE_URL` 指向既有伺服器上的空資料庫。執行 `npm run check` 可檢查 TypeScript 型別。
 
 | 方法 | 路徑 | 用途 |
 |---|---|---|
