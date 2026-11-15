@@ -5,6 +5,13 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "無法連線到故事 API，請確認後端已啟動": "Could not connect to the story API. Check that the backend is running.",
+  "無法新增故事，請確認後端已啟動": "Could not create the story. Check that the backend is running.",
+  "故事已存入資料庫": "Story saved to the database.",
+  "故事已變更，請重新整理再刪除": "The story changed. Reload before deleting it.",
+  "無法刪除資料庫中的故事": "Could not delete the story from the database.",
+  "故事已變更，請重新整理再儲存": "The story changed. Reload before saving.",
+  "無法儲存到資料庫": "Could not save to the database.",
   "世界觀": "Worldbuilding",
   "角色資料": "Characters",
   "人物關係": "Relationships",

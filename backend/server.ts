@@ -102,11 +102,18 @@ export function createStoryServer(db: Database) {
         const result = await db.query(`SELECT ${columns} FROM stories WHERE id=$1`, [id]);
         if (result.rows[0]) return respond(response, 200, result.rows[0]);
       }
-      if (id && method === 'PUT') {
+      if (id && (method === 'PUT' || method === 'DELETE')) {
         const body = await readBody(request);
         const { version } = body;
         if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version > 2147483647) {
           throw new RequestError(400, 'Invalid version');
+        }
+        if (method === 'DELETE') {
+          const result = await db.query('DELETE FROM stories WHERE id=$1 AND version=$2 RETURNING id', [id, version]);
+          if (result.rows[0]) return respond(response, 200, result.rows[0]);
+          const existing = await db.query('SELECT 1 FROM stories WHERE id=$1', [id]);
+          if (existing.rows.length) throw new RequestError(409, 'Story changed. Reload before deleting again.');
+          return respond(response, 404, { error: 'Not found' });
         }
         const values = storyValues(body, false);
         const result = await db.query(
