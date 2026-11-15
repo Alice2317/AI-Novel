@@ -5,6 +5,8 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "目前沒有故事": "No stories yet",
+  "點故事清單旁的＋建立故事。": "Select ＋ next to the story list to create a story.",
   "角色 · 測試回覆": "Character · Test reply",
   "無法讀取角色對話": "Could not load character chat.",
   "角色回覆讀取失敗，可以再次送出": "Could not load the reply. You can send again.",
@@ -44,7 +46,6 @@ const english={
   "匯入失敗": "Import failed",
   "瀏覽器儲存空間不足，資料未能完整保存": "Browser storage is full. Some data could not be saved.",
   "已建立故事；設定會自動保存在此瀏覽器": "Story created. Settings are saved automatically in this browser.",
-  "請至少保留一個故事": "Keep at least one story",
   "已刪除故事": "Story deleted",
   "請先輸入故事名稱": "Enter a story title",
   "故事設定已保存": "Story settings saved",
