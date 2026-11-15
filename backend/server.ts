@@ -83,6 +83,13 @@ function libraryEntries(value: unknown) {
     ids.add(id);
     textField(entry.name, 'name', 500, true);
     textField(entry.description, 'description', 20000);
+    if (entry.characterFields !== undefined) {
+      const fields = entry.characterFields;
+      if (!Array.isArray(fields) || new Set(fields).size !== fields.length ||
+          !fields.every(key => ['affiliation','species','rank','abilities','equipment','appearance','reveal'].includes(key))) {
+        throw new RequestError(400, 'Invalid character fields');
+      }
+    }
     const itemIds = new Set<string>();
     for (const item of entry.items) {
       if (!item || typeof item !== 'object') throw new RequestError(400, 'Invalid library item');
@@ -94,7 +101,12 @@ function libraryEntries(value: unknown) {
       }
       textField(item.title, 'title', 500, true);
       textField(item.content, 'content', 50000);
-      if (item.keywords !== undefined) textField(item.keywords, 'keywords', 500);
+      if (Array.isArray(item.keywords)) {
+        if (item.keywords.length > 50) throw new RequestError(400, 'Too many keywords');
+        for (const keyword of item.keywords) textField(keyword, 'keyword', 500, true);
+      } else if (item.keywords !== undefined) {
+        textField(item.keywords, 'keywords', 500);
+      }
       if (item.group !== undefined) textField(item.group, 'group', 100);
       if (item.order !== undefined && (!Number.isInteger(item.order) || item.order < 1 || item.order > 1000000)) {
         throw new RequestError(400, 'Invalid chapter order');

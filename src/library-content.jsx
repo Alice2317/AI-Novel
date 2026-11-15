@@ -6,8 +6,20 @@ export const characterFields = [
   ['reveal', '揭露條件'],
 ];
 
+export function keywordTags(value) {
+  const tags = Array.isArray(value) ? value : (value || '').split(/[,，、\n]+|\s+(?=#)/);
+  return [...new Set(tags.map(tag => tag.trim().replace(/^#+/, '').trim()).filter(Boolean))];
+}
+
+export function enabledCharacterFields(work) {
+  const enabled = work?.characterFields;
+  return characterFields.filter(([key]) => Array.isArray(enabled)
+    ? enabled.includes(key)
+    : work?.items?.some(item => item.category === '角色資料' && item.profile?.[key]?.trim()));
+}
+
 export function itemMatches(item, query) {
-  const text = [item.title, item.content, item.keywords, item.group, ...Object.values(item.profile || {})]
+  const text = [item.title, item.content, ...keywordTags(item.keywords).flatMap(tag=>[tag, '#'+tag]), item.group, ...Object.values(item.profile || {})]
     .filter(value => typeof value === 'string').join(' ').normalize('NFKC').toLowerCase();
   return query.normalize('NFKC').trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
 }
@@ -54,7 +66,7 @@ export function LibraryContent({ content }) {
 export function groupCharacters(items, ungrouped) {
   const groups = new Map();
   for (const item of items) {
-    const name = item.group?.trim() || ungrouped;
+    const name = item.group?.trim() || item.profile?.affiliation?.trim() || ungrouped;
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(item);
   }

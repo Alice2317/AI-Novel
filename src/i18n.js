@@ -5,6 +5,13 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "姓名": "Name",
+  "描述": "Description",
+  "新增關鍵字": "Add keyword",
+  "移除關鍵字": "Remove keyword",
+  "每筆資料最多 50 個關鍵字": "Each entry supports up to 50 keywords.",
+  "擴充分類": "Additional fields",
+  "關閉擴充分類": "Close additional fields",
   "原作篇章／大綱": "Source chapters and outlines",
   "關鍵字": "Keywords",
   "分組": "Group",
