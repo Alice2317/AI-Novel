@@ -22,3 +22,14 @@ CREATE TABLE IF NOT EXISTS story_chat_exchanges (
 
 CREATE INDEX IF NOT EXISTS story_chat_exchanges_history
   ON story_chat_exchanges (story_id, id);
+
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS details jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE TABLE IF NOT EXISTS workspace_library (
+  id integer PRIMARY KEY CHECK (id = 1),
+  entries jsonb NOT NULL CHECK (jsonb_typeof(entries) = 'array'),
+  version integer NOT NULL
+);
+
+INSERT INTO workspace_library (id, entries, version)
+VALUES (1, '[]', 1) ON CONFLICT (id) DO NOTHING;

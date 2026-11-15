@@ -5,7 +5,7 @@ import pg from 'pg';
 
 type Database = Pick<pg.Pool, 'query'>;
 const columns = `id, title, genre, status, summary, original_mode AS "originalMode",
-  story_language AS "storyLanguage", version, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  story_language AS "storyLanguage", details, version, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 class RequestError extends Error {
   readonly status: number;
@@ -25,7 +25,7 @@ function respond(response: ServerResponse, status: number, data: unknown) {
   response.end(JSON.stringify(data));
 }
 
-async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function readBody(request: IncomingMessage, limit = 64 * 1024): Promise<Record<string, unknown>> {
   if (request.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
     throw new RequestError(415, 'Expected application/json');
   }
@@ -34,7 +34,7 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   const stream = request.iterator({ destroyOnReturn: false });
   for await (const chunk of stream) {
     size += chunk.length;
-    if (size > 64 * 1024) {
+    if (size > limit) {
       request.resume();
       throw new RequestError(413, 'Request body is too large');
     }
@@ -60,6 +60,45 @@ function textField(value: unknown, name: string, max: number, required = false) 
   return value;
 }
 
+const detailFields = ['time', 'location', 'chapter', 'phase', 'characters', 'summary', 'world', 'rules', 'direction', 'triggers'];
+
+function storyDetails(value: unknown) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new RequestError(400, 'Invalid story details');
+  for (const [field, text] of Object.entries(value)) {
+    if (!detailFields.includes(field)) throw new RequestError(400, 'Unknown story detail');
+    textField(text, field, 2000);
+  }
+  return JSON.stringify(value);
+}
+
+function libraryEntries(value: unknown) {
+  if (!Array.isArray(value)) throw new RequestError(400, 'Invalid library');
+  const ids = new Set<string>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object' || !Array.isArray(entry.items) ||
+        !['original', 'source'].includes(entry.type)) throw new RequestError(400, 'Invalid library entry');
+    const id = textField(entry.id, 'id', 100, true);
+    if (ids.has(id)) throw new RequestError(400, 'Duplicate library ID');
+    ids.add(id);
+    textField(entry.name, 'name', 500, true);
+    textField(entry.description, 'description', 20000);
+    const itemIds = new Set<string>();
+    for (const item of entry.items) {
+      if (!item || typeof item !== 'object') throw new RequestError(400, 'Invalid library item');
+      const itemId = textField(item.id, 'id', 100, true);
+      if (itemIds.has(itemId)) throw new RequestError(400, 'Duplicate library item ID');
+      itemIds.add(itemId);
+      if (!['世界觀','角色資料','人物關係','設定與規則','參考文件'].includes(item.category)) {
+        throw new RequestError(400, 'Invalid library category');
+      }
+      textField(item.title, 'title', 500, true);
+      textField(item.content, 'content', 50000);
+    }
+  }
+  return JSON.stringify(value);
+}
+
 function storyValues(body: Record<string, unknown>, creating: boolean) {
   const { title, genre, status, summary, originalMode, storyLanguage } = creating
     ? { genre: '', status: '草稿', summary: '', originalMode: 'none', storyLanguage: 'zh-TW', ...body }
@@ -82,6 +121,22 @@ export function createStoryServer(db: Database) {
     try {
       const path = request.url?.split('?')[0];
       const method = request.method;
+      if (path === '/api/library' && method === 'GET') {
+        const { rows } = await db.query('SELECT entries, version FROM workspace_library WHERE id=1');
+        return respond(response, 200, rows[0]);
+      }
+      if (path === '/api/library' && method === 'PUT') {
+        const { entries, version } = await readBody(request, 5 * 1024 * 1024);
+        if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version >= 2147483647) {
+          throw new RequestError(400, 'Invalid version');
+        }
+        const { rows } = await db.query(
+          'UPDATE workspace_library SET entries=$1, version=version+1 WHERE id=1 AND version=$2 RETURNING entries, version',
+          [libraryEntries(entries), version],
+        );
+        if (!rows[0]) throw new RequestError(409, 'Library changed. Reload before saving again.');
+        return respond(response, 200, rows[0]);
+      }
       if (path === '/api/stories' && method === 'GET') {
         const result = await db.query(`SELECT ${columns} FROM stories ORDER BY updated_at DESC, id`);
         return respond(response, 200, result.rows);
@@ -150,8 +205,8 @@ export function createStoryServer(db: Database) {
         const values = storyValues(body, false);
         const result = await db.query(
           `UPDATE stories SET title=$2, genre=$3, status=$4, summary=$5, original_mode=$6,
-             story_language=$7, updated_at=now(), version=version+1
-           WHERE id=$1 AND version=$8 RETURNING ${columns}`, [id, ...values, version],
+             story_language=$7, details=COALESCE($9::jsonb,details), updated_at=now(), version=version+1
+           WHERE id=$1 AND version=$8 RETURNING ${columns}`, [id, ...values, version, storyDetails(body.details)],
         );
         if (result.rows[0]) return respond(response, 200, result.rows[0]);
         const existing = await db.query('SELECT 1 FROM stories WHERE id=$1', [id]);

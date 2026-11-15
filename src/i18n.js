@@ -5,6 +5,8 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "無法讀取資料庫，請確認後端已啟動": "Could not load the library. Check that the backend is running.",
+  "資料庫已變更，請重新整理再儲存": "The library changed. Reload before saving.",
   "目前沒有故事": "No stories yet",
   "點故事清單旁的＋建立故事。": "Select ＋ next to the story list to create a story.",
   "角色 · 測試回覆": "Character · Test reply",

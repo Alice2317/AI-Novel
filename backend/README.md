@@ -61,3 +61,18 @@ $story.summary = 'Updated summary'
 $story = Invoke-RestMethod -Method Put -Uri "$api/$($story.id)" -ContentType 'application/json' -Body ($story | ConvertTo-Json)
 Invoke-RestMethod -Uri "$api/$($story.id)"
 ```
+
+## 介面本機驗收
+
+在專案根目錄執行 `npm run dev`，由 Vite 將 `/api` 轉送到本機後端。
+
+- 以「＋」建立資料庫故事。在故事設定填寫時間、地點、章節、階段等資料，儲存，再重新整理確認狀態面板讀回內容。
+- 在原作資料庫新增一個原作或原創世界與一筆條目，重新整理後確認能讀回。現有瀏覽器資料會在伺服器資料庫尚未寫入時帶入，首次成功修改時寫入 PostgreSQL。
+- `GET /api/library` 讀取資料庫內容和版本。`PUT /api/library` 接收 `{ entries, version }`，版本衝突時回傳 409。
+- 手動 JSON 匯出目前涵蓋瀏覽器故事及原作資料庫。PostgreSQL 的故事和聊天室紀錄需另行透過資料庫備份。
+
+## 正式上線前要提供的設定
+
+- 正式網站網域、後端主機與 PostgreSQL 連線資訊，密碼及 `DATABASE_URL` 由部署平台的祕密設定提供。
+- 正式模型供應商、模型名稱及 API 金鑰。現在的角色回覆使用本機測試邏輯。
+- 若開放多位使用者，先接登入與逐故事授權，再對外開放 API。現在的後端是本機單人模式，正式網域的路由也尚未接通。

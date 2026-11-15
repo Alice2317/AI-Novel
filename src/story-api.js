@@ -1,7 +1,10 @@
 export const useStoryApi = import.meta.env.DEV;
 
-export async function storyRequest(path, { method = 'GET', body, signal } = {}) {
-  const response = await fetch('/api/stories' + path, {
+export const storyRequest = (path, options) => apiRequest('/api/stories' + path, options);
+export const libraryRequest = options => apiRequest('/api/library', options);
+
+async function apiRequest(path, { method = 'GET', body, signal } = {}) {
+  const response = await fetch(path, {
     method,
     signal,
     ...(body === undefined ? {} : {
