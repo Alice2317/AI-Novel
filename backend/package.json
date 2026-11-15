@@ -1,0 +1,12 @@
+{
+  "name": "ai-novel-backend",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.ts",
+    "check": "tsc --noEmit --strict --target es2022 --module nodenext --allowImportingTsExtensions server.ts"
+  },
+  "dependencies": { "pg": "^8.16.0" },
+  "devDependencies": { "@types/node": "^24.0.0", "@types/pg": "^8.15.0", "typescript": "^5.9.0" }
+}
