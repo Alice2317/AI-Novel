@@ -5,6 +5,11 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "角色 · 測試回覆": "Character · Test reply",
+  "無法讀取角色對話": "Could not load character chat.",
+  "角色回覆讀取失敗，可以再次送出": "Could not load the reply. You can send again.",
+  "角色回覆中…": "Waiting for character reply…",
+  "聊天室測試模式：回覆由本機產生。": "Chat test mode. Replies are generated locally.",
   "無法連線到故事 API，請確認後端已啟動": "Could not connect to the story API. Check that the backend is running.",
   "無法新增故事，請確認後端已啟動": "Could not create the story. Check that the backend is running.",
   "故事已存入資料庫": "Story saved to the database.",

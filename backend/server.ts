@@ -97,6 +97,38 @@ export function createStoryServer(db: Database) {
         return respond(response, 201, result.rows[0]);
       }
 
+      const chatStoryId = path?.match(/^\/api\/stories\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/chat$/i)?.[1];
+      if (chatStoryId && (method === 'GET' || method === 'POST')) {
+        const story = (await db.query('SELECT story_language FROM stories WHERE id=$1', [chatStoryId])).rows[0];
+        if (!story) throw new RequestError(404, 'Story not found');
+        if (method === 'GET') {
+          const { rows } = await db.query(
+            'SELECT player_text AS "playerText", reply_text AS reply FROM story_chat_exchanges WHERE story_id=$1 ORDER BY id',
+            [chatStoryId],
+          );
+          return respond(response, 200, rows);
+        }
+        const body = await readBody(request);
+        const playerText = textField(body.text, 'text', 5000, true).trim();
+        const requestId = body.requestId;
+        if (typeof requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+          throw new RequestError(400, 'Invalid requestId');
+        }
+        const publicText = playerText.split(/\r?\n/).filter(line => !/^\s*OS(?:\s|[:：]|$)/i.test(line)).join('\n').trim();
+        const heardKnock = /敲門|敲门|knock/i.test(publicText);
+        const reply = story.story_language === 'en'
+          ? heardKnock ? 'Lin Che: Keep the door closed. Can you see anyone through the peephole?' : 'Lin Che: I’m still here. Can you hear anything outside your door?'
+          : heardKnock ? '林澈：先別開門。你能從貓眼看見外面有人嗎？' : '林澈：我還在。你聽得見門外有什麼聲音嗎？';
+        const { rows } = await db.query(
+          `INSERT INTO story_chat_exchanges (story_id, request_id, player_text, reply_text)
+           VALUES ($1,$2,$3,$4) ON CONFLICT (story_id, request_id) DO UPDATE
+           SET request_id=EXCLUDED.request_id RETURNING player_text AS "playerText", reply_text AS reply`,
+          [chatStoryId, requestId, playerText, reply],
+        );
+        if (rows[0].playerText !== playerText) throw new RequestError(409, 'Request ID already used');
+        return respond(response, 200, rows[0]);
+      }
+
       const id = path?.match(/^\/api\/stories\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)?.[1];
       if (id && method === 'GET') {
         const result = await db.query(`SELECT ${columns} FROM stories WHERE id=$1`, [id]);

@@ -10,3 +10,15 @@ CREATE TABLE IF NOT EXISTS stories (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS story_chat_exchanges (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  story_id uuid NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+  request_id uuid NOT NULL,
+  player_text text NOT NULL,
+  reply_text text NOT NULL,
+  UNIQUE (story_id, request_id)
+);
+
+CREATE INDEX IF NOT EXISTS story_chat_exchanges_history
+  ON story_chat_exchanges (story_id, id);
