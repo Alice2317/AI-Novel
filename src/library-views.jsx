@@ -26,6 +26,7 @@ export function validViews(views) {
     typeof view?.id === 'string' && !!view.id.trim() && view.id.length <= 100 &&
     typeof view.name === 'string' && !!view.name.trim() && view.name.length <= 100 &&
     ['cards','table'].includes(view.layout) && typeof view.group === 'boolean' &&
+    (view.keywords === undefined || typeof view.keywords === 'boolean') &&
     Array.isArray(view.fields) && view.fields.length <= 30 &&
     new Set(view.fields.map(field => field?.id)).size === view.fields.length &&
     view.fields.every(field => typeof field?.id === 'string' && /^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal)$/.test(field.id) &&
@@ -57,6 +58,7 @@ export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
       </select></label>
       <label className="view-check"><input type="checkbox" checked={draft.group} onChange={e=>patch({group:e.target.checked})}/>{t('開啟分組')}</label>
       {draft.group&&<p>{t('啟用後，每筆資料可填寫分組名稱。')}</p>}
+      <label className="view-check"><input type="checkbox" checked={draft.keywords!==false} onChange={e=>patch({keywords:e.target.checked})}/>{t('開啟關鍵字')}</label>
       <fieldset><legend>{t('自訂欄位')}</legend>
         {draft.fields.map(field=><div className="view-field-row" key={field.id}>
           <input required maxLength={100} aria-label={t('欄位名稱')} placeholder={t('欄位名稱')} value={field.name} onChange={e=>updateField(field.id,{name:e.target.value})}/>
@@ -110,8 +112,8 @@ export function displayValue(item, field, t) {
 
 export function ViewEntries({ view, items, renderCard, renderActions, t }) {
   const renderItems = rows => view.layout === 'table' ? <div className="library-table-scroll"><table className="library-view-table">
-    <thead><tr><th scope="col">{t('名稱')}</th><th scope="col">{t('關鍵字')}</th>{view.fields.map(field=><th key={field.id} scope="col">{t(field.name)}</th>)}<th scope="col">{t('內容')}</th><th scope="col">{t('操作')}</th></tr></thead>
-    <tbody>{rows.map(item=><tr key={item.id}><th scope="row">{item.title}</th><td>{keywordTags(item.keywords).map(tag=>'#'+tag).join(' ')}</td>
+    <thead><tr><th scope="col">{t('名稱')}</th>{view.keywords!==false&&<th scope="col">{t('關鍵字')}</th>}{view.fields.map(field=><th key={field.id} scope="col">{t(field.name)}</th>)}<th scope="col">{t('內容')}</th><th scope="col">{t('操作')}</th></tr></thead>
+    <tbody>{rows.map(item=><tr key={item.id}><th scope="row">{item.title}</th>{view.keywords!==false&&<td>{keywordTags(item.keywords).map(tag=>'#'+tag).join(' ')}</td>}
       {view.fields.map(field=><td key={field.id}>{displayValue(item,field,t)}</td>)}
       <td>{item.content&&<LibraryContent content={item.content}/>}</td><td><div className="library-item-actions">{renderActions(item)}</div></td></tr>)}</tbody>
   </table></div> : <div className="library-view-cards">{rows.map(renderCard)}</div>;

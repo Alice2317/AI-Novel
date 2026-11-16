@@ -5,6 +5,8 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "開啟關鍵字": "Enable keywords",
+  "搜尋標題或內文…": "Search titles or content…",
   "＋新增": "＋ New",
   "新增分頁": "New tab",
   "編輯分頁": "Edit tab",

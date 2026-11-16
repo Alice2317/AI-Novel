@@ -97,6 +97,7 @@ function libraryEntries(value: unknown) {
       if (!Array.isArray(entry.views) || entry.views.length > 100) throw new RequestError(400, 'Invalid views');
       for (const view of entry.views) {
         if (!view || !['cards','table'].includes(view.layout) || typeof view.group !== 'boolean' ||
+            (view.keywords !== undefined && typeof view.keywords !== 'boolean') ||
             !Array.isArray(view.fields) || view.fields.length > 30) throw new RequestError(400, 'Invalid view');
         const viewId = textField(view.id, 'view ID', 100, true);
         if (categoryIds.has(viewId)) throw new RequestError(400, 'Duplicate view ID');
