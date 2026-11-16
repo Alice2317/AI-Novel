@@ -128,12 +128,11 @@ function StoryLibraryDetails({works,openWork,t}){
   return value;
  };
  if(!works.length)return <p className="field-note">{t("此故事尚無可顯示的綁定作品。")}</p>;
- return works.map(work=><section className="detail-block" key={work.id}>
-  <b>{work.name}</b>
-  <button type="button" className="outline" onClick={()=>openWork(work)}>{t("前往資料庫")}</button>
+ return works.map(work=><section className="story-library-work" key={work.id}>
+  <button type="button" className="story-library-work-link" title={t("前往資料庫")} onClick={()=>openWork(work)}>{work.name}</button>
   {viewsFor(work).map(view=>{
    const items=work.items.filter(item=>item.category===view.id);
-   return <details className="subsection" key={view.id}>
+   return <details className="story-library-view" key={view.id}>
     <summary>{t(view.name)}</summary>
     {items.length?items.map(item=><div className="story-library-record" key={item.id}>
      {view.fields.map(field=>{
