@@ -5,6 +5,8 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "故事演出": "Story participation",
+  "參考資料": "Reference material",
   "重新命名 Chat": "Rename chat",
   "封存 Chat": "Archive chat",
   "重新封存 Chat": "Update chat archive",

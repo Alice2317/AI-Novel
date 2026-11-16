@@ -85,7 +85,7 @@ async function mapLibraryAttachments(entries, transform){
  }))})));
 }
 
-function WorkBindings({work, library, categories, onChange, t, single=false}){
+function WorkBindings({work, library, categories, onChange, onChangeFlags, t, single=false}){
  const [category,setCategory]=useState('');
  const ids=work.boundWorkIds||[];
  const options=library.filter(item=>item.type===category&&item.id!==work.id&&(single||!ids.includes(item.id)));
@@ -100,6 +100,9 @@ function WorkBindings({work, library, categories, onChange, t, single=false}){
   </select></label>
   {!single&&<div className="library-tags">{ids.map(id=><span className="library-tag" key={id}>
    {library.find(item=>item.id===id)?.name||id}
+   {onChangeFlags&&[['performStory','故事演出'],['referenceMaterial','參考資料']].map(([key,label])=>
+    <label className="view-check" key={key}><input type="checkbox" checked={work.bindingFlags?.[id]?.[key]===true}
+     onChange={event=>onChangeFlags(id,key,event.target.checked)}/>{t(label)}</label>)}
    <button type="button" aria-label={t("解除綁定")+' '+(library.find(item=>item.id===id)?.name||id)}
     onClick={()=>onChange(ids.filter(value=>value!==id))}>×</button>
   </span>)}</div>}
@@ -246,6 +249,8 @@ export default function App(){
    ...work,
    ...(work.introItemId&&!work.items.some(item=>item.id===work.introItemId)?{introItemId:null}:{}),
    ...(work.boundWorkIds?{boundWorkIds:work.boundWorkIds.filter(id=>ids.has(id))}:{}),
+   ...(work.bindingFlags?{bindingFlags:Object.fromEntries(Object.entries(work.bindingFlags)
+    .filter(([id])=>ids.has(id)&&work.boundWorkIds?.includes(id)))}:{}),
   }));
   if(useStoryApi){
    if(libraryVersion.current===null){notify(t("無法讀取資料庫，請確認後端已啟動"));return false}
@@ -552,7 +557,10 @@ export default function App(){
   })}/>)}
  {libraryEdit.category==='原作篇章／大綱'&&<label>{t("篇章排序")}<input type="number" min="1" step="1" max="1000000" value={libraryEdit.order??''} onChange={e=>setLibraryEdit(p=>({...p,order:e.target.value}))}/></label>}
  <button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><WorkBindings key={libraryEdit.id} work={libraryEdit} library={library} categories={libraryCategories} t={t}
- onChange={boundWorkIds=>setLibraryEdit(current=>({...current,boundWorkIds}))}/><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><small className="library-work-id">ID: {activeLibrary.id}</small>
+ onChange={boundWorkIds=>setLibraryEdit(current=>({...current,boundWorkIds,
+  bindingFlags:Object.fromEntries(Object.entries(current.bindingFlags||{}).filter(([id])=>boundWorkIds.includes(id)))}))}
+ onChangeFlags={(id,key,value)=>setLibraryEdit(current=>({...current,bindingFlags:{...current.bindingFlags,
+  [id]:{performStory:false,referenceMaterial:false,...current.bindingFlags?.[id],[key]:value}}}))}/><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><small className="library-work-id">ID: {activeLibrary.id}</small>
  {boundWorks.length>0&&<div className="library-tags">{boundWorks.map(work=><button type="button" className="outline" key={work.id}
  onClick={()=>{selectCategory(work.type);setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryMobileDetail(true)}}>{work.name}</button>)}</div>}</div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
  <button className="library-add-view" title={t("新增分頁")} aria-label={t("新增分頁")} onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,customFields:true,fields:[{...titleField}]})}>＋</button>

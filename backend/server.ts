@@ -232,6 +232,16 @@ function libraryEntries(value: unknown, categories: Set<string>, previousEntries
     }
   }
   for (const entry of value) {
+    if (entry.bindingFlags !== undefined) {
+      if (!entry.bindingFlags || typeof entry.bindingFlags !== 'object' || Array.isArray(entry.bindingFlags) ||
+          !Object.entries(entry.bindingFlags).every(([id,value])=>{
+            if (!Array.isArray(entry.boundWorkIds) || !entry.boundWorkIds.includes(id) ||
+                !value || typeof value !== 'object' || Array.isArray(value)) return false;
+            const flags = value as Record<string,unknown>;
+            return Object.keys(flags).length === 2 &&
+              typeof flags.performStory === 'boolean' && typeof flags.referenceMaterial === 'boolean';
+          })) throw new RequestError(400, 'Invalid work binding flags');
+    }
     if (entry.boundWorkIds === undefined) continue;
     const targets = entry.boundWorkIds;
     if (!Array.isArray(targets) || new Set(targets).size !== targets.length ||
@@ -292,7 +302,7 @@ export function createStoryServer(db: Database) {
         )).rows[0];
         if (current?.version !== version) throw new RequestError(409, 'Library changed. Reload before saving again.');
         const nextCategories = categories === undefined ? current.categories : categories;
-        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories), current.entries)) as Array<{id: string; boundWorkIds?: string[]; items: Array<{values?: Record<string,unknown>}>}>;
+        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories), current.entries)) as Array<{id: string; boundWorkIds?: string[]; bindingFlags?: Record<string,unknown>; items: Array<{values?: Record<string,unknown>}>}>;
         const attachmentIds = new Set<string>();
         for (const entry of validated) for (const item of entry.items) for (const value of Object.values(item.values??{})) {
           if (value && typeof value==='object' && 'attachmentId' in value) attachmentIds.add(value.attachmentId as string);
@@ -315,6 +325,9 @@ export function createStoryServer(db: Database) {
         const remapped = new Map(idMappings.map(({previousId,id})=>[previousId,id]));
         for (const entry of validated) {
           if (entry.boundWorkIds) entry.boundWorkIds = entry.boundWorkIds.map(id=>remapped.get(id)??id);
+          if (entry.bindingFlags) entry.bindingFlags = Object.fromEntries(
+            Object.entries(entry.bindingFlags).map(([id,flags])=>[remapped.get(id)??id,flags]),
+          );
         }
         const { rows } = await db.query(
           'UPDATE workspace_library SET entries=$1, categories=$2, version=version+1 WHERE id=1 AND version=$3 RETURNING entries, categories, version',
