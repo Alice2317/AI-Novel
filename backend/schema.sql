@@ -41,3 +41,5 @@ CREATE TABLE IF NOT EXISTS library_attachments (
   id text PRIMARY KEY,
   data text NOT NULL
 );
+
+ALTER TABLE stories ADD COLUMN IF NOT EXISTS bound_work_ids jsonb NOT NULL DEFAULT '[]'::jsonb;

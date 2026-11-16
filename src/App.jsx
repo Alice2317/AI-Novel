@@ -2,7 +2,7 @@ import { attachmentReference, CategoryDialog, displayValue, fileValue, fieldValu
 import { characterFields, itemMatches, keywordTags, sortChapters } from './library-content.jsx';
 import { readLibraryAttachment, uploadLibraryAttachment, libraryRequest, storyRequest, useStoryApi } from './story-api.js';
 import { translate, readInterfaceLanguage, INTERFACE_LANGUAGE_KEY } from './i18n.js';
-import React,{useEffect,useMemo,useRef,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 
 const STORE_KEY='storyloom.frontend.v0.2';
 const WORKSPACE_KEY='storyloom.visibleWorkspaces.v1';
@@ -26,7 +26,7 @@ const DETAIL_FIELDS=[
  ['characters','角色資料'],['summary','劇情摘要'],['world','世界觀設定'],['rules','規則與提示'],
  ['direction','劇情運作方向'],['triggers','觸發模組'],
 ];
-const WORKSPACES=[{id:'story',name:'故事工作台',icon:'▤'},{id:'library',name:'原作資料庫',icon:'▧'},{id:'archive',name:'備份與結算',icon:'◷'}];
+const WORKSPACES=[{id:'story',name:'故事工作台',icon:'▤'},{id:'library',name:'資料庫',icon:'▧'},{id:'archive',name:'備份與結算',icon:'◷'}];
 const starterStories=[
  {id:'ST-01',title:'未命名的故事',genre:'原創世界',status:'進行中',summary:'',originalMode:'none'},
  {id:'ST-02',title:'新故事企劃',genre:'待設定',status:'草稿',summary:'',originalMode:'none'}
@@ -42,7 +42,8 @@ function validateBackup(data){
  if(!isRecord(data)||data.format!=='storyloom-backup-v1')throw Error('備份格式不正確');
  if(!Array.isArray(data.stories)||
     !data.stories.every(story=>hasTextFields(story,['id','title','genre','status','summary','originalMode'])&&
-      ['none','active','reference'].includes(story.originalMode))||!hasUniqueIds(data.stories)){
+      ['none','active','reference'].includes(story.originalMode)&&
+      (story.boundWorkIds===undefined||(Array.isArray(story.boundWorkIds)&&story.boundWorkIds.every(id=>typeof id==='string'))))||!hasUniqueIds(data.stories)){
   throw Error('備份中的故事資料不正確');
  }
  const ids=new Set(data.stories.map(story=>story.id));
@@ -105,6 +106,47 @@ function WorkBindings({work, library, categories, onChange, t}){
  </fieldset>;
 }
 
+function NewStoryDialog({draft,setDraft,library,categories,onSave,onClose,t}){
+ const ref=useRef(null);
+ useEffect(()=>{ref.current.showModal()},[]);
+ return <dialog className="library-view-dialog" ref={ref} aria-label={t("新增故事")} onCancel={e=>{e.preventDefault();onClose()}}>
+  <form onSubmit={e=>{e.preventDefault();onSave()}}>
+   <h2>{t("新增故事")}</h2>
+   <label>{t("故事名稱")}<input autoFocus required maxLength={60} value={draft.title} onChange={e=>setDraft(current=>({...current,title:e.target.value}))}/></label>
+   <WorkBindings work={draft} library={library} categories={categories} t={t}
+    onChange={boundWorkIds=>setDraft(current=>({...current,boundWorkIds}))}/>
+   <div className="view-dialog-actions"><button type="button" onClick={onClose}>{t("取消")}</button><button type="submit" className="primary-action">{t("建立故事")}</button></div>
+  </form>
+ </dialog>;
+}
+
+function StoryLibraryDetails({works,openWork,t}){
+ const plain=value=>{
+  if(Array.isArray(value))return value.join('、');
+  if(typeof value==='boolean')return t(value?"是":"否");
+  if(value&&typeof value==='object')return value.name||'';
+  return value;
+ };
+ if(!works.length)return <p className="field-note">{t("此故事尚無可顯示的綁定作品。")}</p>;
+ return works.map(work=><section className="detail-block" key={work.id}>
+  <b>{work.name}</b>
+  <button type="button" className="outline" onClick={()=>openWork(work)}>{t("前往資料庫")}</button>
+  {viewsFor(work).map(view=>{
+   const items=work.items.filter(item=>item.category===view.id);
+   return <details className="subsection" key={view.id}>
+    <summary>{t(view.name)}</summary>
+    {items.length?items.map(item=><div className="story-library-record" key={item.id}>
+     {view.fields.map(field=>{
+      const value=plain(fieldValue(item,field));
+      return value!==''&&value!=null?<p key={field.id}><b>{t(field.name)}</b> {value}</p>:null;
+     })}
+     {view.keywords!==false&&keywordTags(item.keywords).length>0&&<p>{keywordTags(item.keywords).map(tag=>'#'+tag).join(' ')}</p>}
+    </div>):<p className="field-note">{t("此分類尚無資料。")}</p>}
+   </details>;
+  })}
+ </section>);
+}
+
 export default function App(){
  const [uiLanguage,setUiLanguage]=useState(readInterfaceLanguage);
  const t=message=>translate(uiLanguage,message);
@@ -153,9 +195,7 @@ export default function App(){
  const [details,setDetails]=useState(false);
  const [leftOpen,setLeftOpen]=useState(true);
  const [statusOpen,setStatusOpen]=useState(true);
- const [sections,setSections]=useState({characters:false,summary:false,world:false,rules:false});
- const [editing,setEditing]=useState(false);
- const [draft,setDraft]=useState(null);
+ const [newStoryDraft,setNewStoryDraft]=useState(null);
  const [toast,setToast]=useState('');
  const [contextMenu,setContextMenu]=useState(null);
  const [sidebarWidth,setSidebarWidth]=useState(250);
@@ -318,7 +358,7 @@ export default function App(){
    downloadJson({format:'storyloom-backup-v1',exportedAt:new Date().toISOString(),stories:localStories,activeId:localStories.some(s=>s.id===active)?active:localStories[0]?.id??null,messages:Object.fromEntries(Object.entries(allMessages).filter(([id])=>localStories.some(s=>s.id===id))),library:entries,libraryCategories},'storyloom-backup-'+new Date().toISOString().slice(0,10)+'.json');
   }catch{notify(t("無法下載附件"))}
  };
- const importBackup=async()=>{try{const data=JSON.parse(importText);validateBackup(data);if(!window.confirm(t("匯入將覆蓋目前瀏覽器中的故事及資料庫。請先匯出備份，確定繼續？")))return;if(!await changeLibrary(()=>data.library,data.libraryCategories??DEFAULT_LIBRARY_CATEGORIES))return;setStories(data.stories.map(story=>({storyLanguage:'zh-TW',...story})));setActive(data.stories.some(x=>x.id===data.activeId)?data.activeId:data.stories[0]?.id??null);selectCategory(null);setAllMessages(data.messages);setDraftInputs({});setImportText('');notify(t("已還原備份"))}catch(e){notify(e instanceof SyntaxError?t("備份格式不正確"):t(e.message||"匯入失敗"))}};
+ const importBackup=async()=>{try{const data=JSON.parse(importText);validateBackup(data);if(!window.confirm(t("匯入將覆蓋目前瀏覽器中的故事及資料庫。請先匯出備份，確定繼續？")))return;const saved=await changeLibrary(()=>data.library,data.libraryCategories??DEFAULT_LIBRARY_CATEGORIES);if(!saved)return;const remapped=new Map(saved.idMappings.map(({previousId,id})=>[previousId,id]));setStories(data.stories.map(story=>({storyLanguage:'zh-TW',...story,boundWorkIds:story.boundWorkIds?.map(id=>remapped.get(id)??id)})));setActive(data.stories.some(x=>x.id===data.activeId)?data.activeId:data.stories[0]?.id??null);selectCategory(null);setAllMessages(data.messages);setDraftInputs({});setImportText('');notify(t("已還原備份"))}catch(e){notify(e instanceof SyntaxError?t("備份格式不正確"):t(e.message||"匯入失敗"))}};
  useEffect(()=>{
   if(!useStoryApi)return;
   const controller=new AbortController();
@@ -329,11 +369,13 @@ export default function App(){
  },[]);
  const story=stories.find(s=>s.id===active)||stories[0];
  const messages=allMessages[active]||[];
- const turns=useMemo(()=>messages.filter(m=>m.role==='user').length,[messages]);
+ const storyWorks=(story?.boundWorkIds||[]).map(id=>library.find(work=>work.id===id)).filter(Boolean);
  useEffect(()=>{try{localStorage.setItem(STORE_KEY,JSON.stringify({stories:localStories,activeId:active,messages:allMessages}))}catch{setToast(t("瀏覽器儲存空間不足，資料未能完整保存"))}} ,[localStories,active,allMessages]);
  const notify=t=>{setToast(t);window.setTimeout(()=>setToast(''),2600)};
  const create=async()=>{
-  const fields={title:'新故事',storyLanguage:'zh-TW',genre:'待設定',status:'草稿',summary:'',originalMode:'none'};
+  const title=newStoryDraft?.title.trim();
+  if(!title){notify(t("請先輸入故事名稱"));return}
+  const fields={title,boundWorkIds:newStoryDraft.boundWorkIds,storyLanguage:'zh-TW',genre:'待設定',status:'草稿',summary:'',originalMode:'none'};
   let item;
   if(useStoryApi){
    if(busyStoryRequest.current)return;
@@ -346,14 +388,14 @@ export default function App(){
     return;
    }finally{busyStoryRequest.current=false}
   }else{
-   item={...fields,id:'ST-'+Date.now().toString().slice(-6)};
+   item={...fields,id:crypto.randomUUID()};
    setStories(current=>[item,...current]);
   }
   setAllMessages(current=>({...current,[item.id]:emptyMessages}));
-  setActive(item.id);setTab('story');setNav(false);setDetails(true);setEditing(true);setDraft(item);
+  setActive(item.id);setTab('story');setNav(false);setDetails(true);setNewStoryDraft(null);
   notify(t(useStoryApi?"故事已存入資料庫":"已建立故事；設定會自動保存在此瀏覽器"));
  };
- const select=s=>{setActive(s.id);setTab('story');setNav(false);setEditing(false);setDetails(false);setContextMenu(null)};
+ const select=s=>{setActive(s.id);setTab('story');setNav(false);setDetails(false);setContextMenu(null)};
  const showMenu=(event,s)=>{event.preventDefault();event.stopPropagation();const width=190,height=115;setContextMenu({id:s.id,x:Math.max(8,Math.min(event.clientX,window.innerWidth-width-8)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-height-8))})};
  const openStoryMenu=(event,s)=>{const rect=event.currentTarget.getBoundingClientRect();showMenu({preventDefault:()=>{},stopPropagation:()=>{},clientX:rect.left,clientY:rect.bottom+5},s)};
  const deleteStory=async()=>{if(!contextMenu)return;const target=stories.find(s=>s.id===contextMenu.id);if(!target)return;setContextMenu(null);if(!window.confirm(t("確定刪除「")+target.title+t("」？\n這會一併刪除該故事在此瀏覽器的對話紀錄，且無法復原。")))return;if(useStoryApi&&remoteStories.some(s=>s.id===target.id)){
@@ -366,28 +408,9 @@ export default function App(){
    notify(error.status===409?"故事已變更，請重新整理再刪除":"無法刪除資料庫中的故事");
    return;
   }finally{busyStoryRequest.current=false}
- }const remaining=stories.filter(s=>s.id!==target.id);setStories(current=>current.filter(s=>s.id!==target.id));setDraftInputs(current=>{const next={...current};delete next[target.id];return next});setAllMessages(p=>{const next={...p};delete next[target.id];return next});if(active===target.id){setActive(remaining[0]?.id??null);setDetails(false);setEditing(false);setDraft(null)}notify(t("已刪除故事"))};
- const menuAction=action=>{if(!contextMenu)return;const selected=stories.find(s=>s.id===contextMenu.id);if(!selected)return;setActive(selected.id);setTab('story');setNav(false);setDetails(true);setEditing(false);setDraft(null);setContextMenu(null)};
+ }const remaining=stories.filter(s=>s.id!==target.id);setStories(current=>current.filter(s=>s.id!==target.id));setDraftInputs(current=>{const next={...current};delete next[target.id];return next});setAllMessages(p=>{const next={...p};delete next[target.id];return next});if(active===target.id){setActive(remaining[0]?.id??null);setDetails(false)}notify(t("已刪除故事"))};
+ const menuAction=action=>{if(!contextMenu)return;const selected=stories.find(s=>s.id===contextMenu.id);if(!selected)return;setActive(selected.id);setTab('story');setNav(false);setDetails(true);setContextMenu(null)};
  useEffect(()=>{const dismiss=e=>{if(e.key==='Escape')setContextMenu(null)};window.addEventListener('keydown',dismiss);return ()=>window.removeEventListener('keydown',dismiss)},[]);
- const openEditor=()=>{setDraft({...story});setEditing(true);setDetails(true)};
- const cancelEditor=()=>{setEditing(false);setDraft(null)};
- const saveSettings=async()=>{
-  if(!draft.title.trim()){notify(t("請先輸入故事名稱"));return}
-  const fields={...draft,title:draft.title.trim()};
-  if(useStoryApi&&remoteStories.some(s=>s.id===draft.id)){
-   if(busyStoryRequest.current)return;
-   busyStoryRequest.current=true;
-   try{
-    const saved=await storyRequest('/'+draft.id,{method:'PUT',body:fields});
-    setRemoteStories(current=>current.map(s=>s.id===saved.id?saved:s));
-   }catch(error){
-    notify(error.status===409?"故事已變更，請重新整理再儲存":"無法儲存到資料庫");
-    return;
-   }finally{busyStoryRequest.current=false}
-  }else setStories(current=>current.map(s=>s.id===draft.id?{...s,...fields}:s));
-  setDraft(current=>current===draft?null:current);
-  notify(t("故事設定已保存"));
- };
  const updateMessages=next=>setAllMessages(p=>({...p,[active]:typeof next==='function'?next(p[active]||[]):next}));
  const insertMarker=kind=>{const field=inputRef.current;const start=field?.selectionStart??input.length;const end=field?.selectionEnd??start;const before=input.slice(0,start);const after=input.slice(end);let marker,offset;if(kind==='dialogue'){marker='""';offset=1}else if(kind==='os'){marker=(before.length&&!before.endsWith('\n')?'\n':'')+'OS ';offset=marker.length}else{marker='\n';offset=1}setInput(before+marker+after);requestAnimationFrame(()=>{field?.focus();const pos=start+offset;field?.setSelectionRange(pos,pos)})};
  const [chatHistory,setChatHistory]=useState({});
@@ -435,21 +458,26 @@ export default function App(){
    notify(t("角色回覆讀取失敗，可以再次送出"));
   }finally{setChatPending(current=>({...current,[active]:false}))}
  };
- const modeLabel=mode=>mode==='active'?t("啟用原作線（C-2）"):mode==='reference'?t("只參照原作設定（C-3）"):t("無原作（C-1）");
+
  return <div onClick={()=>contextMenu&&setContextMenu(null)} style={{'--sidebar-width':sidebarWidth+'px','--detail-width':detailWidth+'px'}} className={'app '+(leftOpen?'':'sidebar-collapsed')+' '+(details?'':'details-collapsed')+(dragging?' is-resizing':'')}>
  <aside className={'sidebar '+(nav?'open':'')}>
  <div className="sidebar-head"><span>{t("工作區")}</span><button className="sidebar-toggle" onClick={()=>{setLeftOpen(false);setNav(false)}} title={t("收合故事清單")} aria-label={t("收合故事清單")}>×</button></div><div className="workspace-heading"><span>{t("工作區")}</span><button className="workspace-config-trigger" title={t("自訂工作區顯示")} aria-label={t("自訂工作區顯示")} aria-expanded={workspaceMenu==='config'} onClick={()=>setWorkspaceMenu(p=>p==='config'?null:'config')}>⚙</button></div>
  {workspaceMenu==='config'&&<div className="workspace-config"><label className="workspace-language"><span>{t("介面語言")}</span><select value={uiLanguage} onChange={e=>setUiLanguage(e.target.value)}><option value="zh-TW" lang="zh-TW">繁體中文</option><option value="en" lang="en">English</option></select></label><div className="workspace-config-title">{t("選擇完整顯示的工作區")} <small>{visibleWorkspaces.length}/3</small></div>{WORKSPACES.map(w=><label key={w.id}><input type="checkbox" checked={visibleWorkspaces.includes(w.id)} disabled={!visibleWorkspaces.includes(w.id)&&visibleWorkspaces.length>=3} onChange={()=>toggleWorkspace(w.id)}/><span>{w.icon}　{t(w.name)}</span></label>)}<p>{t("最多顯示 3 個，其餘放在「…其他」。")}</p></div>}
  {WORKSPACES.filter(w=>visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} className={'nav '+(tab===w.id?'chosen':'')} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}
  {WORKSPACES.some(w=>!visibleWorkspaces.includes(w.id))&&<div className="workspace-other-wrap"><button className={'nav '+(!visibleWorkspaces.includes(tab)?'chosen':'')} aria-expanded={workspaceMenu==='other'} onClick={()=>setWorkspaceMenu(p=>p==='other'?null:'other')}>{t("⋯　其他")} <span className="other-chevron">⌄</span></button>{workspaceMenu==='other'&&<div className="workspace-other">{WORKSPACES.filter(w=>!visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}</div>}</div>}
- {tab==='story'&&<><div className="label">{t("我的故事")} <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={create} title={t("建立新故事")} aria-label={t("建立新故事")}>＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{s.title}<small>{t(s.status)}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事清單寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
+ {tab==='story'&&<><div className="label">{t("我的故事")} <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={()=>setNewStoryDraft({title:t("新故事"),boundWorkIds:[]})} title={t("建立新故事")} aria-label={t("建立新故事")}>＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{s.title}<small>{t(s.status)}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事清單寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
  {nav&&<button className="scrim" onClick={()=>setNav(false)}/>}
- <main><header><button className="hamb" onClick={()=>setNav(true)}>☰</button>{!leftOpen&&<button className="desktop-toggle" onClick={()=>setLeftOpen(true)} title={t("展開故事清單")} aria-label={t("展開故事清單")}>☰</button>}<div className="crumb">{tab==='story'&&story?<button className="story-title-menu" onClick={e=>openStoryMenu(e,story)} onContextMenu={e=>showMenu(e,story)} aria-label={t("開啟")+story.title+t("的故事選單")}>{story.title}<span aria-hidden="true">⌄</span></button>:<b>{tab==='story'?t("故事工作台"):tab==='library'?t("原作資料庫"):t("備份與結算")}</b>}</div></header>
+ <main><header><button className="hamb" onClick={()=>setNav(true)}>☰</button>{!leftOpen&&<button className="desktop-toggle" onClick={()=>setLeftOpen(true)} title={t("展開故事清單")} aria-label={t("展開故事清單")}>☰</button>}<div className="crumb">{tab==='story'&&story?<button className="story-title-menu" onClick={e=>openStoryMenu(e,story)} onContextMenu={e=>showMenu(e,story)} aria-label={t("開啟")+story.title+t("的故事選單")}>{story.title}<span aria-hidden="true">⌄</span></button>:<b>{tab==='story'?t("故事工作台"):tab==='library'?t("資料庫"):t("備份與結算")}</b>}</div></header>
  {tab==='story'?story?<div className="layout"><section className="content"><div className="story-fixed"><div className="fixed-status"><button className="fixed-status-title" onClick={()=>setStatusOpen(!statusOpen)} aria-expanded={statusOpen}><span>{t("◷　故事狀態")}</span><span>{statusOpen?"⌃":"⌄"}</span></button>{statusOpen&&<div className="fixed-status-grid"><div><small>{t("故事時間")}</small><b>{story.details?.time||t("尚未設定")}</b></div><div><small>{t("目前地點")}</small><b>{story.details?.location||t("尚未設定")}</b></div><div><small>{t("目前章節")}</small><b>{story.details?.chapter||t("尚未分卷")}</b></div><div><small>{t("劇情階段")}</small><b>{story.details?.phase||t("尚未設定")}</b></div></div>}</div></div><div className="story-scroll">
  <div className="messages">{chatMessages.filter(m=>m.role!=='system').map((m,i)=><div className={'message '+m.role} key={i}>{m.role==='assistant'&&<div className="spark">✦</div>}{m.role==='system'?<div className="system">{m.text}</div>:<div className="bubble">{m.role==='assistant'&&<small>{t(m.chat?"角色 · 測試回覆":"旁白 · 示範正文（非正式劇情）")}</small>}{m.role==='user'&&<small className="player-mode">{m.mode==='mixed'?t("玩家輸入（混合）"):m.mode==='dialogue'?t("玩家台詞"):m.mode==='os'?t("玩家 OS（私有）"):t("玩家行動")}{m.mode==='os'?' · 不提供給 NPC':''}</small>}{m.text.split('\n').map((line,j)=><p key={j}>{line||' '}</p>)}</div>}{m.role==='user'&&<div className="avatar">{t("我")}</div>}</div>)}</div></div>
  <div className="compose-dock"><div className="composer"><div className="compose-top"><b>{t("玩家輸入")}</b><span>{t("玩家保有所有決定權")}</span></div><div className="input-modes"><button type="button" onClick={()=>insertMarker('dialogue')} title={t("插入雙引號並將游標移至中間")}>{t("對話")}</button><button type="button" onClick={()=>insertMarker('os')} title={t("換到下一行並插入 OS 前綴")}>OS</button><button type="button" onClick={()=>insertMarker('newline')} title={t("在游標位置插入換行")}>{t("換行 ↵")}</button></div><textarea ref={inputRef} rows="3" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229){e.preventDefault();send()}}} placeholder={t("輸入玩家的對話、行動或 OS，可在同一則訊息中混合使用……")}/><div className="compose-bottom"><small>{t("Enter 送出 · Shift + Enter 換行")}</small><button disabled={!input.trim()||chatPending[active]} onClick={send}>{t("送出　↑")}</button></div></div>
  <div className="footnote">{t(remoteChat?(chatPending[active]?"角色回覆中…":"聊天室測試模式：回覆由本機產生。"):"✦　展示模式：輸入會保存在此瀏覽器，但尚未連接 AI API，不會生成新劇情。")}</div></div></section>
- {details&&<div className="resize-handle right-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事資訊寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('right')}}/>}<aside className={'details '+(details?'show':'')}><div className="detail-head"><h3>{t("故事資訊")}</h3><button className="detail-close" onClick={()=>{setDetails(false);cancelEditor()}} aria-label={t("收合故事資訊")}>×</button></div> {editing&&draft&&draft.id===active?<div className="detail-block editor"><div className="detail-edit-head"><b>{t("故事設定")}</b><span>{t("編輯中")}</span></div><label>{t("故事名稱")}<input value={draft.title} maxLength="60" onChange={e=>setDraft(p=>({...p,title:e.target.value}))}/></label><label>{t("故事類型")}<input value={draft.genre} maxLength="40" onChange={e=>setDraft(p=>({...p,genre:e.target.value}))} placeholder={t("例如：奇幻、校園、科幻")}/></label><label>{t("故事簡介")}<textarea rows="3" maxLength="300" value={draft.summary} onChange={e=>setDraft(p=>({...p,summary:e.target.value}))} placeholder={t("簡短描述故事世界與核心設定")}/></label><label>{t("原作模式")}<select value={draft.originalMode} onChange={e=>setDraft(p=>({...p,originalMode:e.target.value}))}><option value="none">{t("C-1｜無原作，只使用原創故事線")}</option><option value="active">{t("C-2｜啟用原作線，與玩家故事線並行")}</option><option value="reference">{t("C-3｜只參照原作設定，不推進原作線")}</option></select></label><p className="field-note">{t("原作模式目前只保存設定；原作資料檢查與事件引擎尚未接通。")}</p>{DETAIL_FIELDS.map(([key,label])=><label key={key}>{t(label)}<textarea rows="2" maxLength={2000} value={draft.details?.[key]||''} onChange={e=>setDraft(p=>({...p,details:{...p.details,[key]:e.target.value}}))}/></label>)}<div className="editor-actions"><button className="outline" onClick={cancelEditor}>{t("取消")}</button><button className="save" onClick={saveSettings}>{t("保存設定")}</button></div></div>:<><div className="detail-block"><div className="detail-edit-head"><b>{t("故事設定")}</b><button className="icon-edit" onClick={openEditor} aria-label={t("編輯故事設定")} title={t("編輯故事設定")}>✎</button></div><div className="row"><span>{t("故事名稱")}</span>{story.title}</div><div className="row"><span>{t("故事類型")}</span>{t(story.genre)}</div><div className="row"><span>{t("故事狀態")}</span>{t(story.status)}</div><div className="row"><span>{t("故事簡介")}</span>{story.summary||t("未設定")}</div><div className="row"><span>{t("原作模式")}</span>{modeLabel(story.originalMode)}</div><div className="row"><span>{t("故事識別碼")}</span>{story.id}</div><div className="row"><span>{t("玩家回合")}</span>{turns}</div></div><div className="detail-block"><b>{t("其他資訊")}</b>{[['characters',t("角色資料"),t("角色與關係模組尚未接入")],['summary',t("劇情摘要"),t("劇情摘要模組尚未接入")],['world',t("世界觀設定"),t("世界觀設定模組尚未接入")],['rules',t("規則與提示"),t("規則模組尚未接入")]].map(([key,label,placeholder])=><div key={key} className="subsection"><button className="section-toggle" onClick={()=>setSections(p=>({...p,[key]:!p[key]}))} aria-expanded={sections[key]}><span>{label}</span><span>{sections[key]?'⌃':'⌄'}</span></button>{sections[key]&&<p className="field-note">{story.details?.[key]||placeholder}</p>}</div>)}<b>{t("快速入口")}</b>{[t("角色與關係"),t("劇情運作方向"),t("觸發模組"),t("故事狀態"),t("回合備份")].map((x,i)=><button className="quick" key={x} onClick={()=>{if(i===4){switchWorkspace('archive');setArchiveView('backup')}else if(i===0)setSections(p=>({...p,characters:!p.characters}));else if(i===3)setStatusOpen(true);else notify(story.details?.[i===1?'direction':'triggers']||x+t("模組尚未接入"))}}><span>{['♙','◇','⌘','▤','◷'][i]}</span>{x}<i>›</i></button>)}</div></>}<div className="detail-block storage-detail"><b>{t("儲存方式")}</b><div className="row"><span>{t("目前儲存位置")}</span>{t("此瀏覽器")}</div><p className="field-note">{t("資料僅儲存在目前瀏覽器，尚未提供跨裝置同步或雲端備份；清除網站資料可能導致資料遺失。")}</p></div></aside></div>:<div className="empty"><h1>{t("目前沒有故事")}</h1><p>{t("點故事清單旁的＋建立故事。")}</p></div>:<div className="workspace-page">{tab==='library'?<><div className="workspace-top"><div><h1>{t(WORKSPACES.find(workspace=>workspace.id===tab).name)}</h1><p>{t("原作與原創分開管理，建立可重複使用的故事設定。")}</p></div></div><div className="library-categories library-collection-tabs">
+ {details&&<div className="resize-handle right-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事資訊寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('right')}}/>}<aside className={'details '+(details?'show':'')}>
+ <div className="detail-head"><h3>{t("故事資訊")}</h3><button className="detail-close" onClick={()=>setDetails(false)} aria-label={t("收合故事資訊")}>×</button></div>
+ <StoryLibraryDetails works={storyWorks} t={t} openWork={work=>{
+  switchWorkspace('library');selectCategory(work.type);setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryMobileDetail(true);
+ }}/>
+ </aside></div>:<div className="empty"><h1>{t("目前沒有故事")}</h1><p>{t("點故事清單旁的＋建立故事。")}</p></div>:<div className="workspace-page">{tab==='library'?<><div className="workspace-top"><div><h1>{t(WORKSPACES.find(workspace=>workspace.id===tab).name)}</h1><p>{t("原作與原創分開管理，建立可重複使用的故事設定。")}</p></div></div><div className="library-categories library-collection-tabs">
  <button className="library-add-view" title={t("新增分類")} aria-label={t("新增分類")} onClick={()=>setCategoryDraft({name:''})}>＋</button>
  {libraryCategories.map(category=><div key={category.id} className={'library-view-tab'+(libraryType===category.id?' selected':'')}>
   <button className={libraryType===category.id?'selected':''} onClick={()=>selectCategory(category.id)}>{t(category.name)}</button>
@@ -503,5 +531,5 @@ export default function App(){
  <div className="library-items">{matchingItems.length?
   <ViewEntries view={activeView} items={isChapterCategory?sortChapters(matchingItems):matchingItems} renderCard={renderLibraryItem} renderActions={renderItemActions} t={t}/>:
   <div className="library-blank">{t(itemQuery.trim()?"找不到符合的資料。":"此分類尚無資料。")}</div>}</div></>}
-</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>50*1024*1024){notify(t("檔案超過 50 MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
+</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>50*1024*1024){notify(t("檔案超過 50 MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{newStoryDraft&&<NewStoryDialog draft={newStoryDraft} setDraft={setNewStoryDraft} library={library} categories={libraryCategories} onSave={create} onClose={()=>{if(!busyStoryRequest.current)setNewStoryDraft(null)}} t={t}/>}{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
 }

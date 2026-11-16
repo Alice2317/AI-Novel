@@ -130,3 +130,6 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 .view-toggle-row{display:flex;flex-wrap:nowrap;gap:18px;align-items:center;white-space:nowrap}
 
 .library-work-id{display:block;font-size:10px;color:#a6aabd;overflow-wrap:anywhere}
+
+.story-library-record{margin:8px 0;padding:8px 0;border-top:1px solid #383c4c}
+.story-library-record p{white-space:pre-wrap;overflow-wrap:anywhere;margin:4px 0;font-size:12px}

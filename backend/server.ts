@@ -5,7 +5,7 @@ import pg from 'pg';
 
 type Database = Pick<pg.Pool, 'query'>;
 const columns = `id, title, genre, status, summary, original_mode AS "originalMode",
-  story_language AS "storyLanguage", details, version, created_at AS "createdAt", updated_at AS "updatedAt"`;
+  story_language AS "storyLanguage", details, bound_work_ids AS "boundWorkIds", version, created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 class RequestError extends Error {
   readonly status: number;
@@ -328,11 +328,23 @@ export function createStoryServer(db: Database) {
         return respond(response, 200, result.rows);
       }
       if (path === '/api/stories' && method === 'POST') {
-        const values = storyValues(await readBody(request), true);
+        const body = await readBody(request);
+        const values = storyValues(body, true);
+        const boundWorkIds = body.boundWorkIds ?? [];
+        if (!Array.isArray(boundWorkIds) || boundWorkIds.length > 100 ||
+            new Set(boundWorkIds).size !== boundWorkIds.length || boundWorkIds.some(id =>
+              typeof id !== 'string' || !id.trim() || id.length > 100)) {
+          throw new RequestError(400, 'Invalid story work IDs');
+        }
+        if (boundWorkIds.length) {
+          const {rows} = await db.query('SELECT entries FROM workspace_library WHERE id=1');
+          const ids = new Set((rows[0]?.entries ?? []).map((work: {id: string})=>work.id));
+          if (boundWorkIds.some(id=>!ids.has(id))) throw new RequestError(400, 'Bound work not found');
+        }
         const id = randomUUID();
         const result = await db.query(
-          `INSERT INTO stories (id, title, genre, status, summary, original_mode, story_language)
-           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING ${columns}`, [id, ...values],
+          `INSERT INTO stories (id, title, genre, status, summary, original_mode, story_language, bound_work_ids)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING ${columns}`, [id, ...values, JSON.stringify(boundWorkIds)],
         );
         response.setHeader('Location', '/api/stories/' + id);
         return respond(response, 201, result.rows[0]);

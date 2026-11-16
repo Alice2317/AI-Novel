@@ -5,6 +5,12 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "新增故事": "New story",
+  "建立故事": "Create story",
+  "前往資料庫": "Open in library",
+  "此故事尚無可顯示的綁定作品。": "No linked works to display for this story.",
+  "是": "Yes",
+  "否": "No",
   "無法下載附件": "Could not download the attachment.",
   "綁定": "Linked works",
   "無": "None",
