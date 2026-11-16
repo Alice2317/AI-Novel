@@ -134,7 +134,7 @@ export function FieldInput({ field, value, onChange, t }) {
     const choices=field.type==='select'?options:[...new Set([...options,...selected])];
     return <label>{label}<select multiple={multiple} value={multiple?selected:choices.includes(selected[0])?selected[0]:''}
       onChange={e=>onChange(multiple?Array.from(e.target.selectedOptions,option=>option.value):e.target.value)}>
-      {!multiple&&<option value="" hidden disabled/>}
+      {!multiple&&(field.type==='select'?<option value="">{t('無')}</option>:<option value="" hidden disabled/>)}
       {choices.map(option=><option key={option}>{option}</option>)}
     </select></label>;
   }
