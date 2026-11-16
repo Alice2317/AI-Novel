@@ -323,6 +323,44 @@ export function createStoryServer(db: Database) {
         if (!rows[0]) throw new RequestError(409, 'Library changed. Reload before saving again.');
         return respond(response, 200, {...rows[0],idMappings});
       }
+      if (path === '/api/chat-archives' && method === 'GET') {
+        const {rows} = await db.query('SELECT id, chat_id AS "chatId", archived_at AS "archivedAt" FROM story_chat_archives');
+        return respond(response, 200, rows);
+      }
+      const archiveChatId = path?.match(/^\/api\/chat-archives\/([a-zA-Z0-9_-]{1,100})$/)?.[1];
+      if (archiveChatId && method === 'GET') {
+        const {rows} = await db.query(
+          'SELECT id, chat_id AS "chatId", messages, archived_at AS "archivedAt" FROM story_chat_archives WHERE chat_id=$1',
+          [archiveChatId],
+        );
+        if (!rows[0]) throw new RequestError(404, 'Archive not found');
+        return respond(response, 200, rows[0]);
+      }
+      if (archiveChatId && method === 'PUT') {
+        const {messages} = await readBody(request, 5 * 1024 * 1024);
+        if (!Array.isArray(messages) || !messages.every(message=>message && typeof message==='object' &&
+            ['system','user','assistant'].includes(message.role) && typeof message.text==='string' &&
+            (message.mode===undefined || typeof message.mode==='string'))) {
+          throw new RequestError(400, 'Invalid chat messages');
+        }
+        const localMessages = messages.map(({role,text,mode})=>({role,text,mode}));
+        const isUuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(archiveChatId);
+        const exchanges = isUuid ? (await db.query(
+          'SELECT player_text, reply_text FROM story_chat_exchanges WHERE story_id=$1 ORDER BY id',
+          [archiveChatId],
+        )).rows : [];
+        const transcript = [...localMessages,...exchanges.flatMap(exchange=>[
+          {role:'user',text:exchange.player_text,mode:'mixed'},
+          {role:'assistant',text:exchange.reply_text},
+        ])];
+        const {rows} = await db.query(
+          `INSERT INTO story_chat_archives (chat_id,id,messages) VALUES ($1,$2,$3)
+           ON CONFLICT (chat_id) DO UPDATE SET messages=EXCLUDED.messages, archived_at=clock_timestamp()
+           RETURNING id, chat_id AS "chatId", archived_at AS "archivedAt"`,
+          [archiveChatId,randomUUID(),JSON.stringify(transcript)],
+        );
+        return respond(response, 200, rows[0]);
+      }
       if (path === '/api/stories' && method === 'GET') {
         const result = await db.query(`SELECT ${columns} FROM stories ORDER BY updated_at DESC, id`);
         return respond(response, 200, result.rows);

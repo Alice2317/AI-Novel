@@ -22,3 +22,5 @@ async function apiRequest(path, { method = 'GET', body, signal } = {}) {
 
 export const uploadLibraryAttachment = data => apiRequest('/api/library/attachments', {method:'POST',body:{data}});
 export const readLibraryAttachment = id => apiRequest('/api/library/attachments/'+id);
+
+export const chatArchiveRequest = (path, options) => apiRequest('/api/chat-archives' + path, options);

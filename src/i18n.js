@@ -5,6 +5,14 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "重新命名 Chat": "Rename chat",
+  "封存 Chat": "Archive chat",
+  "重新封存 Chat": "Update chat archive",
+  "封存 ID": "Archive ID",
+  "Chat 已封存": "Chat archived.",
+  "無法封存 Chat": "Could not archive the chat.",
+  "無法讀取封存記錄": "Could not load chat archives.",
+  "封存需要本機後端": "Archiving requires the local backend.",
   "新增故事": "New story",
   "建立故事": "Create story",
   "前往資料庫": "Open in library",

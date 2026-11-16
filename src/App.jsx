@@ -1,6 +1,6 @@
 import { attachmentReference, CategoryDialog, displayValue, fileValue, fieldValue, FieldInput, validViews, ViewDialog, ViewEntries, viewsFor, titleField } from './library-views.jsx';
 import { characterFields, itemMatches, keywordTags, sortChapters } from './library-content.jsx';
-import { readLibraryAttachment, uploadLibraryAttachment, libraryRequest, storyRequest, useStoryApi } from './story-api.js';
+import { chatArchiveRequest, readLibraryAttachment, uploadLibraryAttachment, libraryRequest, storyRequest, useStoryApi } from './story-api.js';
 import { translate, readInterfaceLanguage, INTERFACE_LANGUAGE_KEY } from './i18n.js';
 import React,{useEffect,useRef,useState} from 'react';
 
@@ -196,6 +196,26 @@ export default function App(){
  const [leftOpen,setLeftOpen]=useState(true);
  const [statusOpen,setStatusOpen]=useState(true);
  const [newStoryDraft,setNewStoryDraft]=useState(null);
+ const [chatNames,setChatNames]=useState(()=>{
+  try{
+   const names=JSON.parse(localStorage.getItem('storyloom.chatNames.v1'));
+   return isRecord(names)?names:{};
+  }catch{return {}}
+ });
+ const [chatArchives,setChatArchives]=useState({});
+ const pendingArchives=useRef(new Set());
+ useEffect(()=>{
+  try{localStorage.setItem('storyloom.chatNames.v1',JSON.stringify(chatNames))}catch{}
+ },[chatNames]);
+ useEffect(()=>{
+  if(!useStoryApi)return;
+  const controller=new AbortController();
+  chatArchiveRequest('',{signal:controller.signal}).then(rows=>
+   setChatArchives(current=>({...Object.fromEntries(rows.map(row=>[row.chatId,row.id])),...current}))
+  ).catch(error=>{if(error.name!=='AbortError')setToast("無法讀取封存記錄")});
+  return ()=>controller.abort();
+ },[]);
+ const chatName=story=>typeof chatNames[story.id]==='string'&&chatNames[story.id]?chatNames[story.id]:story.title;
  const [toast,setToast]=useState('');
  const [contextMenu,setContextMenu]=useState(null);
  const [sidebarWidth,setSidebarWidth]=useState(250);
@@ -396,8 +416,27 @@ export default function App(){
   notify(t(useStoryApi?"故事已存入資料庫":"已建立故事；設定會自動保存在此瀏覽器"));
  };
  const select=s=>{setActive(s.id);setTab('story');setNav(false);setDetails(false);setContextMenu(null)};
- const showMenu=(event,s)=>{event.preventDefault();event.stopPropagation();const width=190,height=115;setContextMenu({id:s.id,x:Math.max(8,Math.min(event.clientX,window.innerWidth-width-8)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-height-8))})};
+ const showMenu=(event,s)=>{event.preventDefault();event.stopPropagation();const width=190,height=205;setContextMenu({id:s.id,x:Math.max(8,Math.min(event.clientX,window.innerWidth-width-8)),y:Math.max(8,Math.min(event.clientY,window.innerHeight-height-8))})};
  const openStoryMenu=(event,s)=>{const rect=event.currentTarget.getBoundingClientRect();showMenu({preventDefault:()=>{},stopPropagation:()=>{},clientX:rect.left,clientY:rect.bottom+5},s)};
+ const renameChat=()=>{
+  const target=stories.find(story=>story.id===contextMenu?.id);
+  setContextMenu(null);
+  if(!target)return;
+  const name=window.prompt(t("重新命名 Chat"),chatName(target))?.trim();
+  if(name)setChatNames(current=>({...current,[target.id]:name}));
+ };
+ const archiveChat=async()=>{
+  const id=contextMenu?.id;
+  setContextMenu(null);
+  if(!id||!useStoryApi||pendingArchives.current.has(id))return;
+  pendingArchives.current.add(id);
+  try{
+   const saved=await chatArchiveRequest('/'+id,{method:'PUT',body:{messages:allMessages[id]||[]}});
+   setChatArchives(current=>({...current,[id]:saved.id}));
+   notify(t("Chat 已封存"));
+  }catch{notify(t("無法封存 Chat"))}
+  finally{pendingArchives.current.delete(id)}
+ };
  const deleteStory=async()=>{if(!contextMenu)return;const target=stories.find(s=>s.id===contextMenu.id);if(!target)return;setContextMenu(null);if(!window.confirm(t("確定刪除「")+target.title+t("」？\n這會一併刪除該故事在此瀏覽器的對話紀錄，且無法復原。")))return;if(useStoryApi&&remoteStories.some(s=>s.id===target.id)){
   if(busyStoryRequest.current)return;
   busyStoryRequest.current=true;
@@ -465,9 +504,9 @@ export default function App(){
  {workspaceMenu==='config'&&<div className="workspace-config"><label className="workspace-language"><span>{t("介面語言")}</span><select value={uiLanguage} onChange={e=>setUiLanguage(e.target.value)}><option value="zh-TW" lang="zh-TW">繁體中文</option><option value="en" lang="en">English</option></select></label><div className="workspace-config-title">{t("選擇完整顯示的工作區")} <small>{visibleWorkspaces.length}/3</small></div>{WORKSPACES.map(w=><label key={w.id}><input type="checkbox" checked={visibleWorkspaces.includes(w.id)} disabled={!visibleWorkspaces.includes(w.id)&&visibleWorkspaces.length>=3} onChange={()=>toggleWorkspace(w.id)}/><span>{w.icon}　{t(w.name)}</span></label>)}<p>{t("最多顯示 3 個，其餘放在「…其他」。")}</p></div>}
  {WORKSPACES.filter(w=>visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} className={'nav '+(tab===w.id?'chosen':'')} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}
  {WORKSPACES.some(w=>!visibleWorkspaces.includes(w.id))&&<div className="workspace-other-wrap"><button className={'nav '+(!visibleWorkspaces.includes(tab)?'chosen':'')} aria-expanded={workspaceMenu==='other'} onClick={()=>setWorkspaceMenu(p=>p==='other'?null:'other')}>{t("⋯　其他")} <span className="other-chevron">⌄</span></button>{workspaceMenu==='other'&&<div className="workspace-other">{WORKSPACES.filter(w=>!visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}</div>}</div>}
- {tab==='story'&&<><div className="label">{t("我的故事")} <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={()=>setNewStoryDraft({title:t("新故事"),boundWorkIds:[]})} title={t("建立新故事")} aria-label={t("建立新故事")}>＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{s.title}<small>{t(s.status)}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事清單寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
+ {tab==='story'&&<><div className="label">{t("我的故事")} <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={()=>setNewStoryDraft({title:t("新故事"),boundWorkIds:[]})} title={t("建立新故事")} aria-label={t("建立新故事")}>＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{chatName(s)}{chatArchives[s.id]&&<small>{t("封存 ID")} {chatArchives[s.id]}</small>}<small>{t(s.status)}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事清單寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
  {nav&&<button className="scrim" onClick={()=>setNav(false)}/>}
- <main><header><button className="hamb" onClick={()=>setNav(true)}>☰</button>{!leftOpen&&<button className="desktop-toggle" onClick={()=>setLeftOpen(true)} title={t("展開故事清單")} aria-label={t("展開故事清單")}>☰</button>}<div className="crumb">{tab==='story'&&story?<button className="story-title-menu" onClick={e=>openStoryMenu(e,story)} onContextMenu={e=>showMenu(e,story)} aria-label={t("開啟")+story.title+t("的故事選單")}>{story.title}<span aria-hidden="true">⌄</span></button>:<b>{tab==='story'?t("故事工作台"):tab==='library'?t("資料庫"):t("備份與結算")}</b>}</div></header>
+ <main><header><button className="hamb" onClick={()=>setNav(true)}>☰</button>{!leftOpen&&<button className="desktop-toggle" onClick={()=>setLeftOpen(true)} title={t("展開故事清單")} aria-label={t("展開故事清單")}>☰</button>}<div className="crumb">{tab==='story'&&story?<button className="story-title-menu" onClick={e=>openStoryMenu(e,story)} onContextMenu={e=>showMenu(e,story)} aria-label={t("開啟")+chatName(story)+t("的故事選單")}>{chatName(story)}<span aria-hidden="true">⌄</span></button>:<b>{tab==='story'?t("故事工作台"):tab==='library'?t("資料庫"):t("備份與結算")}</b>}</div></header>
  {tab==='story'?story?<div className="layout"><section className="content"><div className="story-fixed"><div className="fixed-status"><button className="fixed-status-title" onClick={()=>setStatusOpen(!statusOpen)} aria-expanded={statusOpen}><span>{t("◷　故事狀態")}</span><span>{statusOpen?"⌃":"⌄"}</span></button>{statusOpen&&<div className="fixed-status-grid"><div><small>{t("故事時間")}</small><b>{story.details?.time||t("尚未設定")}</b></div><div><small>{t("目前地點")}</small><b>{story.details?.location||t("尚未設定")}</b></div><div><small>{t("目前章節")}</small><b>{story.details?.chapter||t("尚未分卷")}</b></div><div><small>{t("劇情階段")}</small><b>{story.details?.phase||t("尚未設定")}</b></div></div>}</div></div><div className="story-scroll">
  <div className="messages">{chatMessages.filter(m=>m.role!=='system').map((m,i)=><div className={'message '+m.role} key={i}>{m.role==='assistant'&&<div className="spark">✦</div>}{m.role==='system'?<div className="system">{m.text}</div>:<div className="bubble">{m.role==='assistant'&&<small>{t(m.chat?"角色 · 測試回覆":"旁白 · 示範正文（非正式劇情）")}</small>}{m.role==='user'&&<small className="player-mode">{m.mode==='mixed'?t("玩家輸入（混合）"):m.mode==='dialogue'?t("玩家台詞"):m.mode==='os'?t("玩家 OS（私有）"):t("玩家行動")}{m.mode==='os'?' · 不提供給 NPC':''}</small>}{m.text.split('\n').map((line,j)=><p key={j}>{line||' '}</p>)}</div>}{m.role==='user'&&<div className="avatar">{t("我")}</div>}</div>)}</div></div>
  <div className="compose-dock"><div className="composer"><div className="compose-top"><b>{t("玩家輸入")}</b><span>{t("玩家保有所有決定權")}</span></div><div className="input-modes"><button type="button" onClick={()=>insertMarker('dialogue')} title={t("插入雙引號並將游標移至中間")}>{t("對話")}</button><button type="button" onClick={()=>insertMarker('os')} title={t("換到下一行並插入 OS 前綴")}>OS</button><button type="button" onClick={()=>insertMarker('newline')} title={t("在游標位置插入換行")}>{t("換行 ↵")}</button></div><textarea ref={inputRef} rows="3" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229){e.preventDefault();send()}}} placeholder={t("輸入玩家的對話、行動或 OS，可在同一則訊息中混合使用……")}/><div className="compose-bottom"><small>{t("Enter 送出 · Shift + Enter 換行")}</small><button disabled={!input.trim()||chatPending[active]} onClick={send}>{t("送出　↑")}</button></div></div>
@@ -531,5 +570,5 @@ export default function App(){
  <div className="library-items">{matchingItems.length?
   <ViewEntries view={activeView} items={isChapterCategory?sortChapters(matchingItems):matchingItems} renderCard={renderLibraryItem} renderActions={renderItemActions} t={t}/>:
   <div className="library-blank">{t(itemQuery.trim()?"找不到符合的資料。":"此分類尚無資料。")}</div>}</div></>}
-</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>50*1024*1024){notify(t("檔案超過 50 MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{newStoryDraft&&<NewStoryDialog draft={newStoryDraft} setDraft={setNewStoryDraft} library={library} categories={libraryCategories} onSave={create} onClose={()=>{if(!busyStoryRequest.current)setNewStoryDraft(null)}} t={t}/>}{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
+</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>50*1024*1024){notify(t("檔案超過 50 MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{newStoryDraft&&<NewStoryDialog draft={newStoryDraft} setDraft={setNewStoryDraft} library={library} categories={libraryCategories} onSave={create} onClose={()=>{if(!busyStoryRequest.current)setNewStoryDraft(null)}} t={t}/>}{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" onClick={renameChat}>{t("重新命名 Chat")}</button><button role="menuitem" onClick={archiveChat} disabled={!useStoryApi} title={!useStoryApi?t("封存需要本機後端"):undefined}>{t(chatArchives[contextMenu.id]?"重新封存 Chat":"封存 Chat")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
 }

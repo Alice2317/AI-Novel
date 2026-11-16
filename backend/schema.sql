@@ -43,3 +43,10 @@ CREATE TABLE IF NOT EXISTS library_attachments (
 );
 
 ALTER TABLE stories ADD COLUMN IF NOT EXISTS bound_work_ids jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+CREATE TABLE IF NOT EXISTS story_chat_archives (
+  chat_id text PRIMARY KEY,
+  id uuid NOT NULL UNIQUE,
+  messages jsonb NOT NULL CHECK (jsonb_typeof(messages) = 'array'),
+  archived_at timestamptz NOT NULL DEFAULT now()
+);
