@@ -5,6 +5,8 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "顯示工作區": "Visible workspaces",
+  "編輯{分頁}": "Edit {分頁}",
   "排程": "Schedule",
   "提示詞": "Prompt",
   "任務說明": "Task description",

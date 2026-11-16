@@ -5,6 +5,7 @@ import { translate, readInterfaceLanguage, INTERFACE_LANGUAGE_KEY } from './i18n
 import React,{useEffect,useRef,useState} from 'react';
 
 const STORE_KEY='storyloom.frontend.v0.2';
+const MAX_VISIBLE_WORKSPACES=3;
 const WORKSPACE_KEY='storyloom.visibleWorkspaces.v2';
 const CATEGORY_KEY='storyloom.libraryCategories.v1';
 const DEFAULT_LIBRARY_CATEGORIES=[{id:'source',name:'原作資料'},{id:'original',name:'原創資料'}];
@@ -187,11 +188,11 @@ export default function App(){
  const [visibleWorkspaces,setVisibleWorkspaces]=useState(()=>{
   try{
    const saved=JSON.parse(localStorage.getItem(WORKSPACE_KEY));
-   if(Array.isArray(saved))return saved.filter(id=>WORKSPACES.some(workspace=>workspace.id===id));
+   if(Array.isArray(saved))return [...new Set(saved.filter(id=>WORKSPACES.some(workspace=>workspace.id===id)))].slice(0,MAX_VISIBLE_WORKSPACES);
    const previous=JSON.parse(localStorage.getItem('storyloom.visibleWorkspaces.v1'));
-   if(Array.isArray(previous))return [...new Set([...previous.filter(id=>WORKSPACES.some(workspace=>workspace.id===id)),'ai','schedule'])];
+   if(Array.isArray(previous))return [...new Set([...previous.filter(id=>WORKSPACES.some(workspace=>workspace.id===id))])].slice(0,MAX_VISIBLE_WORKSPACES);
   }catch{}
-  return WORKSPACES.map(workspace=>workspace.id);
+  return WORKSPACES.slice(0,MAX_VISIBLE_WORKSPACES).map(workspace=>workspace.id);
  });
  const [workspaceMenu,setWorkspaceMenu]=useState(null);
  const [library,setLibrary]=useState(readLibrary);
@@ -250,7 +251,7 @@ export default function App(){
  useEffect(()=>{if(!dragging)return;const move=e=>{if(window.innerWidth<=1050)return;const maxLeft=Math.min(480,window.innerWidth-(details?detailWidth:0)-380);if(dragging==='left')setSidebarWidth(Math.max(190,Math.min(maxLeft,e.clientX)));else if(dragging==='right')setDetailWidth(Math.max(240,Math.min(520,window.innerWidth-e.clientX)))};const stop=()=>setDragging(null);window.addEventListener('pointermove',move);window.addEventListener('pointerup',stop);window.addEventListener('pointercancel',stop);return()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',stop);window.removeEventListener('pointercancel',stop)}},[dragging,details,detailWidth]);
  useEffect(()=>{try{localStorage.setItem(WORKSPACE_KEY,JSON.stringify(visibleWorkspaces))}catch{}},[visibleWorkspaces]);
  const switchWorkspace=id=>{setTab(id);setWorkspaceMenu(null);setNav(false);setDetails(false)};
- const toggleWorkspace=id=>setVisibleWorkspaces(current=>current.includes(id)?current.filter(x=>x!==id):[...current,id]);
+ const toggleWorkspace=id=>setVisibleWorkspaces(current=>current.includes(id)?current.filter(x=>x!==id):current.length<MAX_VISIBLE_WORKSPACES?[...current,id]:current);
  useEffect(()=>{try{localStorage.setItem(LIBRARY_KEY,JSON.stringify(library));localStorage.setItem(CATEGORY_KEY,JSON.stringify(libraryCategories))}catch{setToast(t("資料庫儲存失敗：請檢查瀏覽器空間"))}},[library,libraryCategories]);
  const libraryVersion=useRef(null);
  const librarySaving=useRef(false);
@@ -543,7 +544,7 @@ export default function App(){
  return <div onClick={()=>contextMenu&&setContextMenu(null)} style={{'--sidebar-width':sidebarWidth+'px','--detail-width':detailWidth+'px'}} className={'app '+(leftOpen?'':'sidebar-collapsed')+' '+(details?'':'details-collapsed')+(dragging?' is-resizing':'')}>
  <aside className={'sidebar '+(nav?'open':'')}>
  <div className="sidebar-head"><span>{t("工作區")}</span><button className="sidebar-toggle" onClick={()=>{setLeftOpen(false);setNav(false)}} title={t("收合故事清單")} aria-label={t("收合故事清單")}>×</button></div><div className="workspace-heading"><span>{t("工作區")}</span><button className="workspace-config-trigger" title={t("自訂工作區顯示")} aria-label={t("自訂工作區顯示")} aria-expanded={workspaceMenu==='config'} onClick={()=>setWorkspaceMenu(p=>p==='config'?null:'config')}>⚙</button></div>
- {workspaceMenu==='config'&&<div className="workspace-config"><label className="workspace-language"><span>{t("介面語言")}</span><select value={uiLanguage} onChange={e=>setUiLanguage(e.target.value)}><option value="zh-TW" lang="zh-TW">繁體中文</option><option value="en" lang="en">English</option></select></label><div className="workspace-config-title">{t("選擇完整顯示的工作區")} <small>{visibleWorkspaces.length}/{WORKSPACES.length}</small></div>{WORKSPACES.map(w=><label key={w.id}><input type="checkbox" checked={visibleWorkspaces.includes(w.id)} onChange={()=>toggleWorkspace(w.id)}/><span>{w.icon}　{t(w.name)}</span></label>)}</div>}
+ {workspaceMenu==='config'&&<div className="workspace-config"><label className="workspace-language"><span>{t("介面語言")}</span><select value={uiLanguage} onChange={e=>setUiLanguage(e.target.value)}><option value="zh-TW" lang="zh-TW">繁體中文</option><option value="en" lang="en">English</option></select></label><div className="workspace-config-title">{t("顯示工作區")} <small>{visibleWorkspaces.length}/{MAX_VISIBLE_WORKSPACES}</small></div>{WORKSPACES.map(w=><label key={w.id}><input type="checkbox" checked={visibleWorkspaces.includes(w.id)} disabled={!visibleWorkspaces.includes(w.id)&&visibleWorkspaces.length>=MAX_VISIBLE_WORKSPACES} onChange={()=>toggleWorkspace(w.id)}/><span>{w.icon}　{t(w.name)}</span></label>)}</div>}
  {WORKSPACES.filter(w=>visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} className={'nav '+(tab===w.id?'chosen':'')} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}
  {WORKSPACES.some(w=>!visibleWorkspaces.includes(w.id))&&<div className="workspace-other-wrap"><button className={'nav '+(!visibleWorkspaces.includes(tab)?'chosen':'')} aria-expanded={workspaceMenu==='other'} onClick={()=>setWorkspaceMenu(p=>p==='other'?null:'other')}>{t("⋯　其他")} <span className="other-chevron">⌄</span></button>{workspaceMenu==='other'&&<div className="workspace-other">{WORKSPACES.filter(w=>!visibleWorkspaces.includes(w.id)).map(w=><button key={w.id} onClick={()=>switchWorkspace(w.id)}>{w.icon}　{t(w.name)}</button>)}</div>}</div>}
  {tab==='story'&&<><div className="label">{t("我的故事")} <span className="story-list-actions"><span>{stories.length}</span><button className="create-story-icon" onClick={()=>setNewStoryDraft({title:t("新故事"),boundWorkIds:[]})} title={t("建立新故事")} aria-label={t("建立新故事")}>＋</button></span></div><div className="story-list">{stories.map(s=><div key={s.id} className={'story-row '+(active===s.id?'current':'')} onContextMenu={e=>showMenu(e,s)}><button className="story" onClick={()=>select(s)}><i/><span>{chatName(s)}{chatArchives[s.id]&&<small>{t("封存 ID")} {chatArchives[s.id]}</small>}<small>{t(s.status)}</small></span></button></div>)}</div></>}</aside>{leftOpen&&<div className="resize-handle left-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事清單寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('left')}}/>}
@@ -575,7 +576,7 @@ export default function App(){
   <button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")+' '+work.name} onClick={()=>{setLibrarySelected(work.id);setLibraryEdit({...work});setLibraryMobileDetail(true)}}>✎</button>
   <button title={t("刪除")} aria-label={t("刪除")+' '+work.name} onClick={()=>removeLibrary(work)}>×</button>
  </div>
- </div>):<div className="library-blank">{t("尚無資料，點擊右上角＋開始建立。")}</div>}</div></div><div className={'library-detail '+(libraryMobileDetail?'mobile-show':'')}>{libraryEdit?<div className="library-form"><div className="library-form-heading"><h2>{libraryEdit.title!==undefined?t("編輯資料"):t("編輯基本資訊")}</h2><button onClick={()=>setLibraryEdit(null)}>×</button></div>{libraryEdit.title!==undefined?<><div><small>{t("資料分類")}</small><p>{t(editingView?.name||libraryEdit.category)}</p></div>{editingView&&editingView.keywords!==false&&<><label htmlFor="library-keyword">{t("關鍵字")}</label>
+ </div>):<div className="library-blank">{t("尚無資料，點擊右上角＋開始建立。")}</div>}</div></div><div className={'library-detail '+(libraryMobileDetail?'mobile-show':'')}>{libraryEdit?<div className="library-form"><div className="library-form-heading"><h2>{libraryEdit.title!==undefined?t("編輯{分頁}").replace("{分頁}",t(editingView?.name||libraryEdit.category)):t("編輯基本資訊")}</h2><button onClick={()=>setLibraryEdit(null)}>×</button></div>{libraryEdit.title!==undefined?<>{editingView&&editingView.keywords!==false&&<><label htmlFor="library-keyword">{t("關鍵字")}</label>
  <div className="library-tags">{keywordTags(libraryEdit.keywords).map(tag=><span className="library-tag" key={tag}>
   #{tag}<button type="button" aria-label={t("移除關鍵字")+' '+tag} onClick={()=>setLibraryEdit(p=>({...p,keywords:keywordTags(p.keywords).filter(value=>value!==tag)}))}>×</button>
  </span>)}</div>
