@@ -438,7 +438,7 @@ export default function App(){
  {categoryDraft&&<CategoryDialog draft={categoryDraft} setDraft={setCategoryDraft} onClose={()=>setCategoryDraft(null)} onSave={saveCategory} t={t}/>}
  <div className="library-grid"><div className="library-collection"><div className="library-search-row"><input className="library-search" value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder={t("搜尋名稱或描述…")} aria-label={t("搜尋資料庫")}/><button type="button" className="primary-action library-add-work" title={t("＋ 新增作品")} aria-label={t("＋ 新增作品")} onClick={newLibrary} disabled={!activeCategory}>＋</button></div><div className="library-collection-list">{filteredLibrary.length?filteredLibrary.map(work=><div key={work.id} className={'library-work-row'+(librarySelected===work.id?' selected':'')}>
  <button className="library-work-select" onClick={()=>{setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryEdit(null);setLibraryMobileDetail(true)}}>
-  <b>{work.name}</b><small className="library-work-id">ID: {work.id}</small><small>{(work.items||[]).length} {t("筆資料")}</small>
+  <b>{work.name}</b><small className="library-work-id">ID: {work.id}</small>
  </button>
  <div className="library-head-actions">
   <button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")+' '+work.name} onClick={()=>{setLibrarySelected(work.id);setLibraryEdit({...work});setLibraryMobileDetail(true)}}>✎</button>
