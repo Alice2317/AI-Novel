@@ -369,7 +369,7 @@ export function createStoryServer(db: Database) {
         const body = await readBody(request);
         const values = storyValues(body, true);
         const boundWorkIds = body.boundWorkIds ?? [];
-        if (!Array.isArray(boundWorkIds) || boundWorkIds.length > 100 ||
+        if (!Array.isArray(boundWorkIds) || boundWorkIds.length > 1 ||
             new Set(boundWorkIds).size !== boundWorkIds.length || boundWorkIds.some(id =>
               typeof id !== 'string' || !id.trim() || id.length > 100)) {
           throw new RequestError(400, 'Invalid story work IDs');

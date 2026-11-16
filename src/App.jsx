@@ -85,24 +85,24 @@ async function mapLibraryAttachments(entries, transform){
  }))})));
 }
 
-function WorkBindings({work, library, categories, onChange, t}){
+function WorkBindings({work, library, categories, onChange, t, single=false}){
  const [category,setCategory]=useState('');
  const ids=work.boundWorkIds||[];
- const options=library.filter(item=>item.type===category&&item.id!==work.id&&!ids.includes(item.id));
+ const options=library.filter(item=>item.type===category&&item.id!==work.id&&(single||!ids.includes(item.id)));
  return <fieldset><legend>{t("綁定")}</legend>
-  <label>{t("資料分類")}<select value={category} onChange={e=>setCategory(e.target.value)}>
+  <label>{t("資料分類")}<select value={category} onChange={e=>{setCategory(e.target.value);if(single)onChange([])}}>
    <option value="">{t("無")}</option>
    {categories.filter(item=>item.id!==work.type).map(item=><option key={item.id} value={item.id}>{t(item.name)}</option>)}
   </select></label>
-  <label>{t("作品")}<select value="" disabled={!category} onChange={e=>{if(e.target.value)onChange([...ids,e.target.value])}}>
+  <label>{t("作品")}<select value={single?(ids[0]||''):''} disabled={!category} onChange={e=>{const id=e.target.value;if(single)onChange(id?[id]:[]);else if(id)onChange([...ids,id])}}>
    <option value="">{t("無")}</option>
    {options.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
   </select></label>
-  <div className="library-tags">{ids.map(id=><span className="library-tag" key={id}>
+  {!single&&<div className="library-tags">{ids.map(id=><span className="library-tag" key={id}>
    {library.find(item=>item.id===id)?.name||id}
    <button type="button" aria-label={t("解除綁定")+' '+(library.find(item=>item.id===id)?.name||id)}
     onClick={()=>onChange(ids.filter(value=>value!==id))}>×</button>
-  </span>)}</div>
+  </span>)}</div>}
  </fieldset>;
 }
 
@@ -113,7 +113,7 @@ function NewStoryDialog({draft,setDraft,library,categories,onSave,onClose,t}){
   <form onSubmit={e=>{e.preventDefault();onSave()}}>
    <h2>{t("新增故事")}</h2>
    <label>{t("故事名稱")}<input autoFocus required maxLength={60} value={draft.title} onChange={e=>setDraft(current=>({...current,title:e.target.value}))}/></label>
-   <WorkBindings work={draft} library={library} categories={categories} t={t}
+   <WorkBindings single work={draft} library={library} categories={categories} t={t}
     onChange={boundWorkIds=>setDraft(current=>({...current,boundWorkIds}))}/>
    <div className="view-dialog-actions"><button type="button" onClick={onClose}>{t("取消")}</button><button type="submit" className="primary-action">{t("建立故事")}</button></div>
   </form>
