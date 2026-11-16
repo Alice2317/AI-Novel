@@ -19,7 +19,7 @@ export function enabledCharacterFields(work) {
 }
 
 export function itemMatches(item, query) {
-  const text = [item.title, item.content, ...keywordTags(item.keywords).flatMap(tag=>[tag, '#'+tag]), item.group, ...Object.values(item.profile || {})]
+  const text = [item.title, item.content, ...keywordTags(item.keywords).flatMap(tag=>[tag, '#'+tag]), item.group, ...Object.values(item.profile || {}), ...Object.values(item.values || {}).flat()]
     .filter(value => typeof value === 'string').join(' ').normalize('NFKC').toLowerCase();
   return query.normalize('NFKC').trim().toLowerCase().split(/\s+/).every(word => text.includes(word));
 }

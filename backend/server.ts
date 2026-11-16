@@ -90,13 +90,37 @@ function libraryEntries(value: unknown) {
         throw new RequestError(400, 'Invalid character fields');
       }
     }
+    const categories = ['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'];
+    const categoryIds = new Set<string>();
+    if (entry.views === undefined) categories.forEach(category => categoryIds.add(category));
+    else {
+      if (!Array.isArray(entry.views) || entry.views.length > 100) throw new RequestError(400, 'Invalid views');
+      for (const view of entry.views) {
+        if (!view || !['cards','table'].includes(view.layout) || typeof view.group !== 'boolean' ||
+            !Array.isArray(view.fields) || view.fields.length > 30) throw new RequestError(400, 'Invalid view');
+        const viewId = textField(view.id, 'view ID', 100, true);
+        if (categoryIds.has(viewId)) throw new RequestError(400, 'Duplicate view ID');
+        categoryIds.add(viewId);
+        textField(view.name, 'view name', 100, true);
+        const fieldIds = new Set<string>();
+        for (const field of view.fields) {
+          if (!field || typeof field.id !== 'string' ||
+              !/^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal)$/.test(field.id) ||
+              !['text','number','select','multi','status','date','person','media','checkbox','url'].includes(field.type) ||
+              fieldIds.has(field.id)) throw new RequestError(400, 'Invalid field');
+          fieldIds.add(field.id);
+          textField(field.name, 'field name', 100, true);
+          if (field.options !== undefined) textField(field.options, 'field options', 2000);
+        }
+      }
+    }
     const itemIds = new Set<string>();
     for (const item of entry.items) {
       if (!item || typeof item !== 'object') throw new RequestError(400, 'Invalid library item');
       const itemId = textField(item.id, 'id', 100, true);
       if (itemIds.has(itemId)) throw new RequestError(400, 'Duplicate library item ID');
       itemIds.add(itemId);
-      if (!['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'].includes(item.category)) {
+      if (!categoryIds.has(item.category)) {
         throw new RequestError(400, 'Invalid library category');
       }
       textField(item.title, 'title', 500, true);
@@ -110,6 +134,16 @@ function libraryEntries(value: unknown) {
       if (item.group !== undefined) textField(item.group, 'group', 100);
       if (item.order !== undefined && (!Number.isInteger(item.order) || item.order < 1 || item.order > 1000000)) {
         throw new RequestError(400, 'Invalid chapter order');
+      }
+      if (item.values !== undefined) {
+        if (!item.values || typeof item.values !== 'object' || Array.isArray(item.values)) {
+          throw new RequestError(400, 'Invalid field values');
+        }
+        for (const value of Object.values(item.values)) {
+          if (Array.isArray(value)) {
+            for (const option of value) textField(option, 'field option', 2000);
+          } else if (typeof value !== 'boolean') textField(value, 'field value', 2000);
+        }
       }
       if (item.profile !== undefined) {
         if (!item.profile || typeof item.profile !== 'object' || Array.isArray(item.profile)) {
