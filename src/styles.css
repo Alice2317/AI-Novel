@@ -92,7 +92,14 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 .library-field-options>div{justify-content:space-between;margin-bottom:8px}
 .library-field-options label{padding:5px 0;font-size:12px;cursor:pointer}
 
-.library-view-tab{display:inline-flex;align-items:center;white-space:nowrap}
+.library-view-tab{display:inline-flex;align-items:stretch;white-space:nowrap;border:1px solid #565a70;border-radius:9px;background:#20222d}
+.library-view-tab.selected{border-color:#9b81d5;background:#302a46}
+.library-categories .library-view-tab>button{border:0;border-radius:0;color:#c4c6d5}
+.library-categories .library-view-tab>button:first-child{border-radius:8px 0 0 8px}
+.library-categories .library-view-tab>button:last-child{border-radius:0 8px 8px 0}
+.library-categories .library-view-tab>button+button{border-left:1px solid #565a70;min-width:28px}
+.library-categories .library-view-tab>button:hover{background:#39334e}
+.library-categories .library-view-tab>button:focus-visible{outline:2px solid #b8a3f0;outline-offset:-2px}
 .library-categories .library-view-tab>button:not(:first-child){padding:5px 6px}
 .library-categories .library-add-view{color:#ded3ff;border-color:#534775;white-space:nowrap}
 .library-view-dialog{width:min(540px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:20px;color:#e8e9f0;background:#20222d;border:1px solid #49435e;border-radius:12px}
