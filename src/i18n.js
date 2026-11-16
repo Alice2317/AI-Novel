@@ -5,6 +5,14 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "新增分類": "New category",
+  "編輯分類": "Edit category",
+  "刪除分類": "Delete category",
+  "分類名稱": "Category name",
+  "請輸入分類名稱": "Enter a category name.",
+  "無法儲存分類": "Could not save category.",
+  "確定刪除此分類及其中所有作品？": "Delete this category and all its works?",
+  "＋ 新增作品": "＋ New work",
   "基本欄位": "Basic fields",
   "姓名（必填）": "Name (required)",
   "名稱（必填）": "Title (required)",

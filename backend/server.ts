@@ -72,12 +72,25 @@ function storyDetails(value: unknown) {
   return JSON.stringify(value);
 }
 
-function libraryEntries(value: unknown) {
+function libraryCategoryIds(value: unknown): Set<string> {
+  if (!Array.isArray(value) || value.length > 100) throw new RequestError(400, 'Invalid library categories');
+  const ids = new Set<string>();
+  for (const category of value) {
+    if (!category || typeof category !== 'object') throw new RequestError(400, 'Invalid library category');
+    const id = textField(category.id, 'category ID', 100, true);
+    textField(category.name, 'category name', 100, true);
+    if (ids.has(id)) throw new RequestError(400, 'Duplicate library category');
+    ids.add(id);
+  }
+  return ids;
+}
+
+function libraryEntries(value: unknown, categories: Set<string>) {
   if (!Array.isArray(value)) throw new RequestError(400, 'Invalid library');
   const ids = new Set<string>();
   for (const entry of value) {
     if (!entry || typeof entry !== 'object' || !Array.isArray(entry.items) ||
-        !['original', 'source'].includes(entry.type)) throw new RequestError(400, 'Invalid library entry');
+        !categories.has(entry.type)) throw new RequestError(400, 'Invalid library entry');
     const id = textField(entry.id, 'id', 100, true);
     if (ids.has(id)) throw new RequestError(400, 'Duplicate library ID');
     ids.add(id);
@@ -90,9 +103,9 @@ function libraryEntries(value: unknown) {
         throw new RequestError(400, 'Invalid character fields');
       }
     }
-    const categories = ['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'];
+    const builtInViews = ['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'];
     const categoryIds = new Set<string>();
-    if (entry.views === undefined) categories.forEach(category => categoryIds.add(category));
+    if (entry.views === undefined) builtInViews.forEach(category => categoryIds.add(category));
     else {
       if (!Array.isArray(entry.views) || entry.views.length > 100) throw new RequestError(400, 'Invalid views');
       for (const view of entry.views) {
@@ -186,17 +199,20 @@ export function createStoryServer(db: Database) {
       const path = request.url?.split('?')[0];
       const method = request.method;
       if (path === '/api/library' && method === 'GET') {
-        const { rows } = await db.query('SELECT entries, version FROM workspace_library WHERE id=1');
+        const { rows } = await db.query('SELECT entries, categories, version FROM workspace_library WHERE id=1');
         return respond(response, 200, rows[0]);
       }
       if (path === '/api/library' && method === 'PUT') {
-        const { entries, version } = await readBody(request, 5 * 1024 * 1024);
+        const { entries, categories, version } = await readBody(request, 5 * 1024 * 1024);
         if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version >= 2147483647) {
           throw new RequestError(400, 'Invalid version');
         }
+        const nextCategories = categories ?? (await db.query(
+          'SELECT categories FROM workspace_library WHERE id=1',
+        )).rows[0]?.categories;
         const { rows } = await db.query(
-          'UPDATE workspace_library SET entries=$1, version=version+1 WHERE id=1 AND version=$2 RETURNING entries, version',
-          [libraryEntries(entries), version],
+          'UPDATE workspace_library SET entries=$1, categories=$2, version=version+1 WHERE id=1 AND version=$3 RETURNING entries, categories, version',
+          [libraryEntries(entries, libraryCategoryIds(nextCategories)), JSON.stringify(nextCategories), version],
         );
         if (!rows[0]) throw new RequestError(409, 'Library changed. Reload before saving again.');
         return respond(response, 200, rows[0]);

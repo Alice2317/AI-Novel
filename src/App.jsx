@@ -1,4 +1,4 @@
-import { displayValue, fieldValue, FieldInput, validViews, ViewDialog, ViewEntries, viewsFor } from './library-views.jsx';
+import { CategoryDialog, displayValue, fieldValue, FieldInput, validViews, ViewDialog, ViewEntries, viewsFor } from './library-views.jsx';
 import { characterFields, itemMatches, keywordTags, LibraryContent, sortChapters } from './library-content.jsx';
 import { libraryRequest, storyRequest, useStoryApi } from './story-api.js';
 import { translate, readInterfaceLanguage, INTERFACE_LANGUAGE_KEY } from './i18n.js';
@@ -6,6 +6,19 @@ import React,{useEffect,useMemo,useRef,useState} from 'react';
 
 const STORE_KEY='storyloom.frontend.v0.2';
 const WORKSPACE_KEY='storyloom.visibleWorkspaces.v1';
+const CATEGORY_KEY='storyloom.libraryCategories.v1';
+const DEFAULT_LIBRARY_CATEGORIES=[{id:'source',name:'原作資料'},{id:'original',name:'原創資料'}];
+const validLibraryCategories=value=>Array.isArray(value)&&value.length<=100&&
+ new Set(value.map(category=>category?.id)).size===value.length&&value.every(category=>
+  typeof category?.id==='string'&&category.id.trim()&&category.id.length<=100&&
+  typeof category.name==='string'&&category.name.trim()&&category.name.length<=100);
+const readLibraryCategories=()=>{
+ try{
+  const value=JSON.parse(localStorage.getItem(CATEGORY_KEY));
+  if(validLibraryCategories(value))return value;
+ }catch{}
+ return DEFAULT_LIBRARY_CATEGORIES;
+};
 const LIBRARY_KEY='storyloom.library.v1';
 const readLibrary=()=>{try{const v=JSON.parse(localStorage.getItem(LIBRARY_KEY));return Array.isArray(v)?v:[]}catch{return []}};
 const DETAIL_FIELDS=[
@@ -40,11 +53,12 @@ function validateBackup(data){
         (message.mode===undefined||['mixed','dialogue','os','action'].includes(message.mode))))){
   throw Error('備份中的對話紀錄或故事關聯不正確');
  }
- if(!Array.isArray(data.library)||!data.library.every(entry=>
+ const categories=data.libraryCategories===undefined?DEFAULT_LIBRARY_CATEGORIES:data.libraryCategories;
+ if(!validLibraryCategories(categories)||!Array.isArray(data.library)||!data.library.every(entry=>
     hasTextFields(entry,['id','type','name','description'])&&validViews(entry.views)&&
     (entry.characterFields===undefined||(Array.isArray(entry.characterFields)&&
       new Set(entry.characterFields).size===entry.characterFields.length&&
-      entry.characterFields.every(key=>characterFields.some(([field])=>field===key))))&&['source','original'].includes(entry.type)&&
+      entry.characterFields.every(key=>characterFields.some(([field])=>field===key))))&&categories.some(category=>category.id===entry.type)&&
     Array.isArray(entry.items)&&entry.items.every(item=>
       hasTextFields(item,['id','category','title','content'])&&viewsFor(entry).some(view=>view.id===item.category)&&
       (item.values===undefined||(isRecord(item.values)&&Object.values(item.values).every(value=>typeof value==='string'||typeof value==='boolean'||(Array.isArray(value)&&value.every(text=>typeof text==='string')))))&&
@@ -81,7 +95,11 @@ export default function App(){
  const [visibleWorkspaces,setVisibleWorkspaces]=useState(()=>{try{const saved=JSON.parse(localStorage.getItem(WORKSPACE_KEY));if(Array.isArray(saved))return saved.filter(id=>WORKSPACES.some(w=>w.id===id)).slice(0,3)}catch{}return WORKSPACES.slice(0,3).map(w=>w.id)});
  const [workspaceMenu,setWorkspaceMenu]=useState(null);
  const [library,setLibrary]=useState(readLibrary);
- const [libraryType,setLibraryType]=useState('source');
+ const [libraryCategories,setLibraryCategories]=useState(readLibraryCategories);
+ const [selectedLibraryType,setLibraryType]=useState('source');
+ const [categoryDraft,setCategoryDraft]=useState(null);
+ const activeCategory=libraryCategories.find(category=>category.id===selectedLibraryType)||libraryCategories[0];
+ const libraryType=activeCategory?.id;
  const [viewDraft,setViewDraft]=useState(null);
  const [keywordInput,setKeywordInput]=useState('');
  const [librarySelected,setLibrarySelected]=useState(null);
@@ -115,7 +133,7 @@ export default function App(){
  useEffect(()=>{try{localStorage.setItem(WORKSPACE_KEY,JSON.stringify(visibleWorkspaces))}catch{}},[visibleWorkspaces]);
  const switchWorkspace=id=>{setTab(id);setWorkspaceMenu(null);setNav(false);setDetails(false)};
  const toggleWorkspace=id=>setVisibleWorkspaces(current=>current.includes(id)?current.filter(x=>x!==id):current.length<3?[...current,id]:current);
- useEffect(()=>{try{localStorage.setItem(LIBRARY_KEY,JSON.stringify(library))}catch{setToast(t("資料庫儲存失敗：請檢查瀏覽器空間"))}},[library]);
+ useEffect(()=>{try{localStorage.setItem(LIBRARY_KEY,JSON.stringify(library));localStorage.setItem(CATEGORY_KEY,JSON.stringify(libraryCategories))}catch{setToast(t("資料庫儲存失敗：請檢查瀏覽器空間"))}},[library,libraryCategories]);
  const libraryVersion=useRef(null);
  const librarySaving=useRef(false);
  useEffect(()=>{
@@ -123,28 +141,47 @@ export default function App(){
   const controller=new AbortController();
   libraryRequest({signal:controller.signal}).then(snapshot=>{
    libraryVersion.current=snapshot.version;
-   if(snapshot.version>1)setLibrary(snapshot.entries);
+   if(snapshot.version>1){setLibrary(snapshot.entries);setLibraryCategories(snapshot.categories??DEFAULT_LIBRARY_CATEGORIES)}
   }).catch(error=>{
    if(error.name!=='AbortError')setToast("無法讀取資料庫，請確認後端已啟動");
   });
   return ()=>controller.abort();
  },[]);
- const changeLibrary=async change=>{
+ const changeLibrary=async (change,categories=libraryCategories)=>{
   if(librarySaving.current)return false;
   const entries=change(library);
   if(useStoryApi){
    if(libraryVersion.current===null){notify(t("無法讀取資料庫，請確認後端已啟動"));return false}
    librarySaving.current=true;
    try{
-    const snapshot=await libraryRequest({method:'PUT',body:{entries,version:libraryVersion.current}});
+    const snapshot=await libraryRequest({method:'PUT',body:{entries,categories,version:libraryVersion.current}});
     libraryVersion.current=snapshot.version;
-    setLibrary(snapshot.entries);
+    setLibrary(snapshot.entries);setLibraryCategories(snapshot.categories??categories);
    }catch(error){
     notify(t(error.status===409?"資料庫已變更，請重新整理再儲存":"無法儲存到資料庫"));
     return false;
    }finally{librarySaving.current=false}
-  }else setLibrary(entries);
+  }else{setLibrary(entries);setLibraryCategories(categories)}
   return true;
+ };
+ const selectCategory=id=>{
+  setLibraryType(id);setLibrarySelected(null);setLibraryEdit(null);setLibraryMobileDetail(false);setLibraryQuery('');
+ };
+ const saveCategory=async()=>{
+  const name=categoryDraft.name.trim();
+  if(!name){notify(t("請輸入分類名稱"));return}
+  const id=categoryDraft.id||'category-'+crypto.randomUUID();
+  const categories=categoryDraft.id?libraryCategories.map(category=>category.id===id?{id,name}:category):[...libraryCategories,{id,name}];
+  if(!validLibraryCategories(categories)){notify(t("無法儲存分類"));return}
+  if(!await changeLibrary(entries=>entries,categories))return;
+  if(!categoryDraft.id)selectCategory(id);
+  setCategoryDraft(null);
+ };
+ const removeCategory=async category=>{
+  const count=library.filter(entry=>entry.type===category.id).length;
+  if(!window.confirm(t("確定刪除此分類及其中所有作品？")+' '+t(category.name)+' ('+count+')'))return;
+  if(!await changeLibrary(entries=>entries.filter(entry=>entry.type!==category.id),libraryCategories.filter(item=>item.id!==category.id)))return;
+  if(libraryType===category.id)selectCategory(null);
  };
  const activeLibrary=library.find(x=>x.id===librarySelected);
  const saveView=async()=>{
@@ -214,8 +251,8 @@ export default function App(){
   {renderItemActions(x)}
  </article>;
  const downloadJson=(data,filename)=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),500)};
- const exportBackup=()=>downloadJson({format:'storyloom-backup-v1',exportedAt:new Date().toISOString(),stories:localStories,activeId:localStories.some(s=>s.id===active)?active:localStories[0]?.id??null,messages:Object.fromEntries(Object.entries(allMessages).filter(([id])=>localStories.some(s=>s.id===id))),library},'storyloom-backup-'+new Date().toISOString().slice(0,10)+'.json');
- const importBackup=async()=>{try{const data=JSON.parse(importText);validateBackup(data);if(!window.confirm(t("匯入將覆蓋目前瀏覽器中的故事及資料庫。請先匯出備份，確定繼續？")))return;if(!await changeLibrary(()=>data.library))return;setStories(data.stories.map(story=>({storyLanguage:'zh-TW',...story})));setActive(data.stories.some(x=>x.id===data.activeId)?data.activeId:data.stories[0]?.id??null);setAllMessages(data.messages);setDraftInputs({});setImportText('');notify(t("已還原備份"))}catch(e){notify(e instanceof SyntaxError?t("備份格式不正確"):t(e.message||"匯入失敗"))}};
+ const exportBackup=()=>downloadJson({format:'storyloom-backup-v1',exportedAt:new Date().toISOString(),stories:localStories,activeId:localStories.some(s=>s.id===active)?active:localStories[0]?.id??null,messages:Object.fromEntries(Object.entries(allMessages).filter(([id])=>localStories.some(s=>s.id===id))),library,libraryCategories},'storyloom-backup-'+new Date().toISOString().slice(0,10)+'.json');
+ const importBackup=async()=>{try{const data=JSON.parse(importText);validateBackup(data);if(!window.confirm(t("匯入將覆蓋目前瀏覽器中的故事及資料庫。請先匯出備份，確定繼續？")))return;if(!await changeLibrary(()=>data.library,data.libraryCategories??DEFAULT_LIBRARY_CATEGORIES))return;setStories(data.stories.map(story=>({storyLanguage:'zh-TW',...story})));setActive(data.stories.some(x=>x.id===data.activeId)?data.activeId:data.stories[0]?.id??null);selectCategory(null);setAllMessages(data.messages);setDraftInputs({});setImportText('');notify(t("已還原備份"))}catch(e){notify(e instanceof SyntaxError?t("備份格式不正確"):t(e.message||"匯入失敗"))}};
  useEffect(()=>{
   if(!useStoryApi)return;
   const controller=new AbortController();
@@ -346,7 +383,16 @@ export default function App(){
  <div className="messages">{chatMessages.filter(m=>m.role!=='system').map((m,i)=><div className={'message '+m.role} key={i}>{m.role==='assistant'&&<div className="spark">✦</div>}{m.role==='system'?<div className="system">{m.text}</div>:<div className="bubble">{m.role==='assistant'&&<small>{t(m.chat?"角色 · 測試回覆":"旁白 · 示範正文（非正式劇情）")}</small>}{m.role==='user'&&<small className="player-mode">{m.mode==='mixed'?t("玩家輸入（混合）"):m.mode==='dialogue'?t("玩家台詞"):m.mode==='os'?t("玩家 OS（私有）"):t("玩家行動")}{m.mode==='os'?' · 不提供給 NPC':''}</small>}{m.text.split('\n').map((line,j)=><p key={j}>{line||' '}</p>)}</div>}{m.role==='user'&&<div className="avatar">{t("我")}</div>}</div>)}</div></div>
  <div className="compose-dock"><div className="composer"><div className="compose-top"><b>{t("玩家輸入")}</b><span>{t("玩家保有所有決定權")}</span></div><div className="input-modes"><button type="button" onClick={()=>insertMarker('dialogue')} title={t("插入雙引號並將游標移至中間")}>{t("對話")}</button><button type="button" onClick={()=>insertMarker('os')} title={t("換到下一行並插入 OS 前綴")}>OS</button><button type="button" onClick={()=>insertMarker('newline')} title={t("在游標位置插入換行")}>{t("換行 ↵")}</button></div><textarea ref={inputRef} rows="3" value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing&&e.nativeEvent.keyCode!==229){e.preventDefault();send()}}} placeholder={t("輸入玩家的對話、行動或 OS，可在同一則訊息中混合使用……")}/><div className="compose-bottom"><small>{t("Enter 送出 · Shift + Enter 換行")}</small><button disabled={!input.trim()||chatPending[active]} onClick={send}>{t("送出　↑")}</button></div></div>
  <div className="footnote">{t(remoteChat?(chatPending[active]?"角色回覆中…":"聊天室測試模式：回覆由本機產生。"):"✦　展示模式：輸入會保存在此瀏覽器，但尚未連接 AI API，不會生成新劇情。")}</div></div></section>
- {details&&<div className="resize-handle right-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事資訊寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('right')}}/>}<aside className={'details '+(details?'show':'')}><div className="detail-head"><h3>{t("故事資訊")}</h3><button className="detail-close" onClick={()=>{setDetails(false);cancelEditor()}} aria-label={t("收合故事資訊")}>×</button></div> {editing&&draft&&draft.id===active?<div className="detail-block editor"><div className="detail-edit-head"><b>{t("故事設定")}</b><span>{t("編輯中")}</span></div><label>{t("故事名稱")}<input value={draft.title} maxLength="60" onChange={e=>setDraft(p=>({...p,title:e.target.value}))}/></label><label>{t("故事類型")}<input value={draft.genre} maxLength="40" onChange={e=>setDraft(p=>({...p,genre:e.target.value}))} placeholder={t("例如：奇幻、校園、科幻")}/></label><label>{t("故事簡介")}<textarea rows="3" maxLength="300" value={draft.summary} onChange={e=>setDraft(p=>({...p,summary:e.target.value}))} placeholder={t("簡短描述故事世界與核心設定")}/></label><label>{t("原作模式")}<select value={draft.originalMode} onChange={e=>setDraft(p=>({...p,originalMode:e.target.value}))}><option value="none">{t("C-1｜無原作，只使用原創故事線")}</option><option value="active">{t("C-2｜啟用原作線，與玩家故事線並行")}</option><option value="reference">{t("C-3｜只參照原作設定，不推進原作線")}</option></select></label><p className="field-note">{t("原作模式目前只保存設定；原作資料檢查與事件引擎尚未接通。")}</p>{DETAIL_FIELDS.map(([key,label])=><label key={key}>{t(label)}<textarea rows="2" maxLength={2000} value={draft.details?.[key]||''} onChange={e=>setDraft(p=>({...p,details:{...p.details,[key]:e.target.value}}))}/></label>)}<div className="editor-actions"><button className="outline" onClick={cancelEditor}>{t("取消")}</button><button className="save" onClick={saveSettings}>{t("保存設定")}</button></div></div>:<><div className="detail-block"><div className="detail-edit-head"><b>{t("故事設定")}</b><button className="icon-edit" onClick={openEditor} aria-label={t("編輯故事設定")} title={t("編輯故事設定")}>✎</button></div><div className="row"><span>{t("故事名稱")}</span>{story.title}</div><div className="row"><span>{t("故事類型")}</span>{t(story.genre)}</div><div className="row"><span>{t("故事狀態")}</span>{t(story.status)}</div><div className="row"><span>{t("故事簡介")}</span>{story.summary||t("未設定")}</div><div className="row"><span>{t("原作模式")}</span>{modeLabel(story.originalMode)}</div><div className="row"><span>{t("故事識別碼")}</span>{story.id}</div><div className="row"><span>{t("玩家回合")}</span>{turns}</div></div><div className="detail-block"><b>{t("其他資訊")}</b>{[['characters',t("角色資料"),t("角色與關係模組尚未接入")],['summary',t("劇情摘要"),t("劇情摘要模組尚未接入")],['world',t("世界觀設定"),t("世界觀設定模組尚未接入")],['rules',t("規則與提示"),t("規則模組尚未接入")]].map(([key,label,placeholder])=><div key={key} className="subsection"><button className="section-toggle" onClick={()=>setSections(p=>({...p,[key]:!p[key]}))} aria-expanded={sections[key]}><span>{label}</span><span>{sections[key]?'⌃':'⌄'}</span></button>{sections[key]&&<p className="field-note">{story.details?.[key]||placeholder}</p>}</div>)}<b>{t("快速入口")}</b>{[t("角色與關係"),t("劇情運作方向"),t("觸發模組"),t("故事狀態"),t("回合備份")].map((x,i)=><button className="quick" key={x} onClick={()=>{if(i===4){switchWorkspace('archive');setArchiveView('backup')}else if(i===0)setSections(p=>({...p,characters:!p.characters}));else if(i===3)setStatusOpen(true);else notify(story.details?.[i===1?'direction':'triggers']||x+t("模組尚未接入"))}}><span>{['♙','◇','⌘','▤','◷'][i]}</span>{x}<i>›</i></button>)}</div></>}<div className="detail-block storage-detail"><b>{t("儲存方式")}</b><div className="row"><span>{t("目前儲存位置")}</span>{t("此瀏覽器")}</div><p className="field-note">{t("資料僅儲存在目前瀏覽器，尚未提供跨裝置同步或雲端備份；清除網站資料可能導致資料遺失。")}</p></div></aside></div>:<div className="empty"><h1>{t("目前沒有故事")}</h1><p>{t("點故事清單旁的＋建立故事。")}</p></div>:<div className="workspace-page">{tab==='library'?<><div className="workspace-top"><div><h1>{t("資料庫")}</h1><p>{t("原作與原創分開管理，建立可重複使用的故事設定。")}</p></div><button className="primary-action" onClick={newLibrary}>{t("＋ 新增")}{libraryType==='source'?t("原作"):t("原創世界")}</button></div><div className="library-tabs"><button className={libraryType==='source'?'selected':''} onClick={()=>{setLibraryType('source');setLibrarySelected(null);setLibraryEdit(null)}}>{t("原作資料")}</button><button className={libraryType==='original'?'selected':''} onClick={()=>{setLibraryType('original');setLibrarySelected(null);setLibraryEdit(null)}}>{t("原創資料")}</button></div><div className="library-grid"><div className="library-collection"><input className="library-search" value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder={t("搜尋名稱或描述…")} aria-label={t("搜尋資料庫")}/><div className="library-collection-list">{filteredLibrary.length?filteredLibrary.map(work=><div key={work.id} className={'library-work-row'+(librarySelected===work.id?' selected':'')}>
+ {details&&<div className="resize-handle right-resize" role="separator" aria-orientation="vertical" aria-label={t("調整故事資訊寬度")} onPointerDown={e=>{if(e.button!==0)return;e.preventDefault();setDragging('right')}}/>}<aside className={'details '+(details?'show':'')}><div className="detail-head"><h3>{t("故事資訊")}</h3><button className="detail-close" onClick={()=>{setDetails(false);cancelEditor()}} aria-label={t("收合故事資訊")}>×</button></div> {editing&&draft&&draft.id===active?<div className="detail-block editor"><div className="detail-edit-head"><b>{t("故事設定")}</b><span>{t("編輯中")}</span></div><label>{t("故事名稱")}<input value={draft.title} maxLength="60" onChange={e=>setDraft(p=>({...p,title:e.target.value}))}/></label><label>{t("故事類型")}<input value={draft.genre} maxLength="40" onChange={e=>setDraft(p=>({...p,genre:e.target.value}))} placeholder={t("例如：奇幻、校園、科幻")}/></label><label>{t("故事簡介")}<textarea rows="3" maxLength="300" value={draft.summary} onChange={e=>setDraft(p=>({...p,summary:e.target.value}))} placeholder={t("簡短描述故事世界與核心設定")}/></label><label>{t("原作模式")}<select value={draft.originalMode} onChange={e=>setDraft(p=>({...p,originalMode:e.target.value}))}><option value="none">{t("C-1｜無原作，只使用原創故事線")}</option><option value="active">{t("C-2｜啟用原作線，與玩家故事線並行")}</option><option value="reference">{t("C-3｜只參照原作設定，不推進原作線")}</option></select></label><p className="field-note">{t("原作模式目前只保存設定；原作資料檢查與事件引擎尚未接通。")}</p>{DETAIL_FIELDS.map(([key,label])=><label key={key}>{t(label)}<textarea rows="2" maxLength={2000} value={draft.details?.[key]||''} onChange={e=>setDraft(p=>({...p,details:{...p.details,[key]:e.target.value}}))}/></label>)}<div className="editor-actions"><button className="outline" onClick={cancelEditor}>{t("取消")}</button><button className="save" onClick={saveSettings}>{t("保存設定")}</button></div></div>:<><div className="detail-block"><div className="detail-edit-head"><b>{t("故事設定")}</b><button className="icon-edit" onClick={openEditor} aria-label={t("編輯故事設定")} title={t("編輯故事設定")}>✎</button></div><div className="row"><span>{t("故事名稱")}</span>{story.title}</div><div className="row"><span>{t("故事類型")}</span>{t(story.genre)}</div><div className="row"><span>{t("故事狀態")}</span>{t(story.status)}</div><div className="row"><span>{t("故事簡介")}</span>{story.summary||t("未設定")}</div><div className="row"><span>{t("原作模式")}</span>{modeLabel(story.originalMode)}</div><div className="row"><span>{t("故事識別碼")}</span>{story.id}</div><div className="row"><span>{t("玩家回合")}</span>{turns}</div></div><div className="detail-block"><b>{t("其他資訊")}</b>{[['characters',t("角色資料"),t("角色與關係模組尚未接入")],['summary',t("劇情摘要"),t("劇情摘要模組尚未接入")],['world',t("世界觀設定"),t("世界觀設定模組尚未接入")],['rules',t("規則與提示"),t("規則模組尚未接入")]].map(([key,label,placeholder])=><div key={key} className="subsection"><button className="section-toggle" onClick={()=>setSections(p=>({...p,[key]:!p[key]}))} aria-expanded={sections[key]}><span>{label}</span><span>{sections[key]?'⌃':'⌄'}</span></button>{sections[key]&&<p className="field-note">{story.details?.[key]||placeholder}</p>}</div>)}<b>{t("快速入口")}</b>{[t("角色與關係"),t("劇情運作方向"),t("觸發模組"),t("故事狀態"),t("回合備份")].map((x,i)=><button className="quick" key={x} onClick={()=>{if(i===4){switchWorkspace('archive');setArchiveView('backup')}else if(i===0)setSections(p=>({...p,characters:!p.characters}));else if(i===3)setStatusOpen(true);else notify(story.details?.[i===1?'direction':'triggers']||x+t("模組尚未接入"))}}><span>{['♙','◇','⌘','▤','◷'][i]}</span>{x}<i>›</i></button>)}</div></>}<div className="detail-block storage-detail"><b>{t("儲存方式")}</b><div className="row"><span>{t("目前儲存位置")}</span>{t("此瀏覽器")}</div><p className="field-note">{t("資料僅儲存在目前瀏覽器，尚未提供跨裝置同步或雲端備份；清除網站資料可能導致資料遺失。")}</p></div></aside></div>:<div className="empty"><h1>{t("目前沒有故事")}</h1><p>{t("點故事清單旁的＋建立故事。")}</p></div>:<div className="workspace-page">{tab==='library'?<><div className="workspace-top"><div><h1>{t("資料庫")}</h1><p>{t("原作與原創分開管理，建立可重複使用的故事設定。")}</p></div><button className="primary-action" onClick={newLibrary} disabled={!activeCategory}>{t("＋ 新增作品")}</button></div><div className="library-categories library-collection-tabs">
+ <button className="library-add-view" title={t("新增分類")} aria-label={t("新增分類")} onClick={()=>setCategoryDraft({name:''})}>＋</button>
+ {libraryCategories.map(category=><div key={category.id} className={'library-view-tab'+(libraryType===category.id?' selected':'')}>
+  <button className={libraryType===category.id?'selected':''} onClick={()=>selectCategory(category.id)}>{t(category.name)}</button>
+  <button title={t("編輯分類")} aria-label={t("編輯分類")+' '+t(category.name)} onClick={()=>setCategoryDraft({...category})}>✎</button>
+  <button title={t("刪除分類")} aria-label={t("刪除分類")+' '+t(category.name)} onClick={()=>removeCategory(category)}>×</button>
+ </div>)}
+ </div>
+ {categoryDraft&&<CategoryDialog draft={categoryDraft} setDraft={setCategoryDraft} onClose={()=>setCategoryDraft(null)} onSave={saveCategory} t={t}/>}
+ <div className="library-grid"><div className="library-collection"><input className="library-search" value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder={t("搜尋名稱或描述…")} aria-label={t("搜尋資料庫")}/><div className="library-collection-list">{filteredLibrary.length?filteredLibrary.map(work=><div key={work.id} className={'library-work-row'+(librarySelected===work.id?' selected':'')}>
  <button className="library-work-select" onClick={()=>{setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryEdit(null);setLibraryMobileDetail(true)}}>
   <b>{work.name}</b><small>{(work.items||[]).length} {t("筆資料")}</small>
  </button>
@@ -366,8 +412,8 @@ export default function App(){
   field={field} value={fieldValue(libraryEdit,field)} t={t}
   onChange={value=>setLibraryEdit(current=>({...current,values:{...current.values,[field.id]:value}}))}/>)}
  {libraryEdit.category==='原作篇章／大綱'&&<label>{t("篇章排序")}<input type="number" min="1" step="1" max="1000000" value={libraryEdit.order??''} onChange={e=>setLibraryEdit(p=>({...p,order:e.target.value}))}/></label>}
- {editingView&&editingView.showContent!==false&&<label>{t(libraryEdit.category==='角色資料'?"描述":"內容")}<textarea rows="9" value={libraryEdit.content} onChange={e=>setLibraryEdit(p=>({...p,content:e.target.value}))}/></label>}<button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介")}<textarea rows="5" value={libraryEdit.description} onChange={e=>setLibraryEdit(p=>({...p,description:e.target.value}))}/></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{libraryType==='source'?t("原作資料"):t("原創資料")}</small><h2>{activeLibrary.name}</h2><p>{activeLibrary.description||t("尚無簡介")}</p></div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
- <button className="library-add-view" onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,fields:[]})}>{t("＋新增")}</button>
+ {editingView&&editingView.showContent!==false&&<label>{t(libraryEdit.category==='角色資料'?"描述":"內容")}<textarea rows="9" value={libraryEdit.content} onChange={e=>setLibraryEdit(p=>({...p,content:e.target.value}))}/></label>}<button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介")}<textarea rows="5" value={libraryEdit.description} onChange={e=>setLibraryEdit(p=>({...p,description:e.target.value}))}/></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><p>{activeLibrary.description||t("尚無簡介")}</p></div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
+ <button className="library-add-view" title={t("新增分頁")} aria-label={t("新增分頁")} onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,fields:[]})}>＋</button>
  {libraryViews.map(view=><div className={'library-view-tab'+(libraryCategory===view.id?' selected':'')} key={view.id}>
   <button className={libraryCategory===view.id?'selected':''} onClick={()=>setLibraryCategory(view.id)}>{t(view.name)}</button>
   <button aria-label={t("編輯分頁")+' '+t(view.name)} title={t("編輯分頁")} onClick={()=>setViewDraft({...view})}>✎</button>

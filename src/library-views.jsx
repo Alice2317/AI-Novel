@@ -41,6 +41,19 @@ export function fieldValue(item, field) {
   return item.values?.[field.id] ?? item.profile?.[field.id] ?? '';
 }
 
+export function CategoryDialog({ draft, setDraft, onSave, onClose, t }) {
+  const ref=useRef(null);
+  useEffect(()=>{ref.current.showModal()},[]);
+  return <dialog ref={ref} className="library-view-dialog" onCancel={e=>{e.preventDefault();onClose()}}>
+    <form onSubmit={e=>{e.preventDefault();onSave()}}>
+      <h2>{t(draft.id?'編輯分類':'新增分類')}</h2>
+      <label>{t('分類名稱')}<input autoFocus required maxLength={100} value={draft.name}
+        onChange={e=>setDraft(current=>({...current,name:e.target.value}))}/></label>
+      <div className="view-dialog-actions"><button type="button" onClick={onClose}>{t('取消')}</button><button className="primary-action" type="submit">{t('儲存')}</button></div>
+    </form>
+  </dialog>;
+}
+
 export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
   const ref = useRef(null);
   useEffect(() => {

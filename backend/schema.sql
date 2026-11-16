@@ -33,3 +33,6 @@ CREATE TABLE IF NOT EXISTS workspace_library (
 
 INSERT INTO workspace_library (id, entries, version)
 VALUES (1, '[]', 1) ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE workspace_library ADD COLUMN IF NOT EXISTS categories jsonb NOT NULL
+  DEFAULT '[{"id":"source","name":"原作資料"},{"id":"original","name":"原創資料"}]'::jsonb;
