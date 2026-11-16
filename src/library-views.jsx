@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { enabledCharacterFields, keywordTags, LibraryContent } from './library-content.jsx';
 
 export const categories = ['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'];
@@ -106,9 +106,71 @@ export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
   </dialog>;
 }
 
+function GregorianDateInput({ label, value, onChange, t }) {
+  const dialog = useRef(null);
+  const [draft, setDraft] = useState({ year: '', month: 1, day: 1 });
+  const english = t('日期') !== '日期';
+  const words = english
+    ? { choose: 'Choose date', year: 'Year (CE)', month: 'Month', day: 'Day', clear: 'Clear date' }
+    : { choose: '選擇日期', year: '西元年', month: '月', day: '日', clear: '清除日期' };
+
+  const dayCount = (year, month) => {
+    const y = Number(year);
+    const leap = y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0);
+    return [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  };
+  const change = patch => setDraft(current => {
+    const next = { ...current, ...patch };
+    return { ...next, day: Math.min(next.day, dayCount(next.year, next.month)) };
+  });
+  const open = () => {
+    const today = new Date();
+    const parsed = typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(value) : null;
+    const saved = parsed && Number(parsed[1]) >= 1 && Number(parsed[2]) >= 1 && Number(parsed[2]) <= 12 && Number(parsed[3]) >= 1 && Number(parsed[3]) <= dayCount(parsed[1], Number(parsed[2])) ? parsed : null;
+    setDraft(saved
+      ? { year: String(Number(saved[1])), month: Number(saved[2]), day: Number(saved[3]) }
+      : { year: String(today.getFullYear()), month: today.getMonth() + 1, day: today.getDate() });
+    dialog.current.showModal();
+  };
+  const save = event => {
+    event.preventDefault();
+    const year = Number(draft.year);
+    if (!Number.isInteger(year) || year < 1 || year > 9999) return;
+    const date = [String(year).padStart(4, '0'), String(draft.month).padStart(2, '0'), String(draft.day).padStart(2, '0')].join('-');
+    onChange(date);
+    dialog.current.close();
+  };
+
+  return <div>
+    <span>{label}</span>{' '}
+    <button type="button" className="outline" aria-haspopup="dialog" aria-label={label + ' · ' + words.choose} onClick={open}>
+      {typeof value === 'string' && value ? value + (english ? ' CE' : '（西元）') : words.choose}
+    </button>
+    <dialog ref={dialog} className="library-view-dialog" aria-label={label + ' · ' + words.choose}>
+      <form onSubmit={save}>
+        <h2>{label} · {words.choose}</h2>
+        <label>{words.year}<input type="number" required min="1" max="9999" step="1" value={draft.year}
+          onChange={event => change({ year: event.target.value })}/></label>
+        <label>{words.month}<select value={draft.month} onChange={event => change({ month: Number(event.target.value) })}>
+          {Array.from({ length: 12 }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
+        </select></label>
+        <label>{words.day}<select value={draft.day} onChange={event => change({ day: Number(event.target.value) })}>
+          {Array.from({ length: dayCount(draft.year, draft.month) }, (_, index) => <option key={index} value={index + 1}>{index + 1}</option>)}
+        </select></label>
+        <div className="view-dialog-actions">
+          {value && <button type="button" onClick={() => { onChange(''); dialog.current.close(); }}>{words.clear}</button>}
+          <button type="button" onClick={() => dialog.current.close()}>{t('取消')}</button>
+          <button type="submit" className="primary-action">{t('儲存')}</button>
+        </div>
+      </form>
+    </dialog>
+  </div>;
+}
+
 export function FieldInput({ field, value, onChange, t }) {
-  const inputType = {number:'number',date:'date',url:'url',media:'url'}[field.type] || 'text';
+  const inputType = {number:'number',url:'url',media:'url'}[field.type] || 'text';
   const label = t(field.name);
+  if (field.type === 'date') return <GregorianDateInput label={label} value={value} onChange={onChange} t={t}/>;
   if (field.type === 'checkbox') return <label className="view-check">
     <input type="checkbox" checked={value===true} onChange={e=>onChange(e.target.checked)}/>{label}
   </label>;
