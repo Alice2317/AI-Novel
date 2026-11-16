@@ -83,7 +83,7 @@ function WorkBindings({work, library, categories, onChange, t}){
  return <fieldset><legend>{t("綁定")}</legend>
   <label>{t("資料分類")}<select value={category} onChange={e=>setCategory(e.target.value)}>
    <option value="">{t("無")}</option>
-   {categories.map(item=><option key={item.id} value={item.id}>{t(item.name)}</option>)}
+   {categories.filter(item=>item.id!==work.type).map(item=><option key={item.id} value={item.id}>{t(item.name)}</option>)}
   </select></label>
   <label>{t("作品")}<select value="" disabled={!category} onChange={e=>{if(e.target.value)onChange([...ids,e.target.value])}}>
    <option value="">{t("無")}</option>
