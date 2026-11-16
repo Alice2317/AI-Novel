@@ -400,7 +400,7 @@ export default function App(){
  </button>
  <div className="library-head-actions">
   <button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")+' '+work.name} onClick={()=>{setLibrarySelected(work.id);setLibraryEdit({...work});setLibraryMobileDetail(true)}}>✎</button>
-  <button title={t("刪除")} aria-label={t("刪除")+' '+work.name} onClick={()=>removeLibrary(work)}>♲</button>
+  <button title={t("刪除")} aria-label={t("刪除")+' '+work.name} onClick={()=>removeLibrary(work)}>×</button>
  </div>
  </div>):<div className="library-blank">{t("尚無資料，點擊右上角＋開始建立。")}</div>}</div></div><div className={'library-detail '+(libraryMobileDetail?'mobile-show':'')}>{libraryEdit?<div className="library-form"><div className="library-form-heading"><h2>{libraryEdit.title!==undefined?t("編輯資料"):t("編輯基本資訊")}</h2><button onClick={()=>setLibraryEdit(null)}>×</button></div>{libraryEdit.title!==undefined?<><label>{t("資料分類")}<select value={libraryEdit.category} onChange={e=>setLibraryEdit(p=>({...p,category:e.target.value}))}>{libraryViews.map(view=><option key={view.id} value={view.id}>{t(view.name)}</option>)}</select></label>{editingView&&editingView.keywords!==false&&<><label htmlFor="library-keyword">{t("關鍵字")}</label>
  <div className="library-tags">{keywordTags(libraryEdit.keywords).map(tag=><span className="library-tag" key={tag}>
