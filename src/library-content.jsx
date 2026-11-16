@@ -63,16 +63,6 @@ export function LibraryContent({ content }) {
   })}</div>;
 }
 
-export function groupCharacters(items, ungrouped) {
-  const groups = new Map();
-  for (const item of items) {
-    const name = item.group?.trim() || item.profile?.affiliation?.trim() || ungrouped;
-    if (!groups.has(name)) groups.set(name, []);
-    groups.get(name).push(item);
-  }
-  return [...groups];
-}
-
 export function sortChapters(items) {
   return [...items].sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
 }

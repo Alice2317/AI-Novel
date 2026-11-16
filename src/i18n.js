@@ -5,6 +5,7 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "無法下載附件": "Could not download the attachment.",
   "綁定": "Linked works",
   "無": "None",
   "作品": "Work",
@@ -247,7 +248,7 @@ const english={
   "↓ 匯出 JSON 備份": "↓ Export JSON backup",
   "匯入備份": "Import a backup",
   "選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。": "Choose a JSON file exported from this site. Back up current data before importing.",
-  "檔案超過 5MB": "File exceeds 5 MB",
+  "檔案超過 50 MB": "File exceeds 50 MB",
   "還原備份": "Restore backup",
   "故事結算紀錄": "Story recap history",
   "此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。": "Story endings, turn recaps, and volume transitions will appear here once the story engine is connected.",

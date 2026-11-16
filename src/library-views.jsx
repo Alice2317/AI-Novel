@@ -1,3 +1,4 @@
+import {readLibraryAttachment} from './story-api.js';
 import React, { useEffect, useRef } from 'react';
 import { enabledCharacterFields, keywordTags, LibraryContent } from './library-content.jsx';
 
@@ -13,6 +14,21 @@ export const fileValue = value => !!value && typeof value==='object' && !Array.i
   typeof value.name==='string' && value.name.length>0 && value.name.length<=255 &&
   typeof value.data==='string' && value.data.length<=699100 &&
   /^data:application\/octet-stream;base64,[A-Za-z0-9+/]*={0,2}$/.test(value.data);
+
+export const attachmentReference = value => !!value && typeof value==='object' &&
+  typeof value.name==='string' && typeof value.attachmentId==='string' && /^[a-f0-9]{64}$/.test(value.attachmentId);
+
+function AttachmentDownload({value,t}){
+  const [failed,setFailed]=React.useState(false);
+  return <><button type="button" onClick={async()=>{
+    setFailed(false);
+    try{
+      const {data}=await readLibraryAttachment(value.attachmentId);
+      const link=document.createElement('a');
+      link.href=data;link.download=value.name;link.click();
+    }catch{setFailed(true)}
+  }}>{value.name}</button>{failed&&<small role="alert">{t('無法下載附件')}</small>}</>;
+}
 
 const optionTypes = ['select','multi','status'];
 
@@ -113,7 +129,7 @@ export function FieldInput({ field, value, onChange, t }) {
     <input type="checkbox" checked={value===true} onChange={e=>onChange(e.target.checked)}/>{label}
   </label>;
   if (field.type==='media') return <label>{label}
-    {fileValue(value)&&<span>{value.name}</span>}
+    {(fileValue(value)||attachmentReference(value))&&<span>{value.name}</span>}
     {typeof value==='string'&&value&&<span>{value}</span>}
     <input type="file" onChange={e=>{
       const input=e.currentTarget;
@@ -122,7 +138,11 @@ export function FieldInput({ field, value, onChange, t }) {
       if(file.size>512*1024){input.value='';input.setCustomValidity(t('檔案大小上限為 512 KB'));input.reportValidity();return}
       input.setCustomValidity('');
       const reader=new FileReader();
-      reader.onload=()=>onChange({name:file.name,data:'data:application/octet-stream;base64,'+String(reader.result).split(',')[1]});
+      reader.onload=()=>{
+        if(input.isConnected&&input.files?.[0]===file){
+          onChange({name:file.name,data:'data:application/octet-stream;base64,'+String(reader.result).split(',')[1]});
+        }
+      };
       reader.readAsDataURL(file);
     }}/>
   </label>;
@@ -148,6 +168,7 @@ export function FieldInput({ field, value, onChange, t }) {
 
 export function displayValue(item, field, t) {
   const value = fieldValue(item, field);
+  if (field.type==='media'&&attachmentReference(value)) return <AttachmentDownload value={value} t={t}/>;
   if (field.type==='media'&&fileValue(value)) return <a href={value.data} download={value.name}>{value.name}</a>;
   if (field.id==='content'&&field.type==='longText'&&typeof value==='string') return <LibraryContent content={value}/>;
   if (field.type==='checkbox') return value===true?'✓':value===false?'—':String(value);

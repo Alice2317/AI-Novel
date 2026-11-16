@@ -1,6 +1,6 @@
-import { CategoryDialog, displayValue, fileValue, fieldValue, FieldInput, validViews, ViewDialog, ViewEntries, viewsFor, titleField } from './library-views.jsx';
+import { attachmentReference, CategoryDialog, displayValue, fileValue, fieldValue, FieldInput, validViews, ViewDialog, ViewEntries, viewsFor, titleField } from './library-views.jsx';
 import { characterFields, itemMatches, keywordTags, sortChapters } from './library-content.jsx';
-import { libraryRequest, storyRequest, useStoryApi } from './story-api.js';
+import { readLibraryAttachment, uploadLibraryAttachment, libraryRequest, storyRequest, useStoryApi } from './story-api.js';
 import { translate, readInterfaceLanguage, INTERFACE_LANGUAGE_KEY } from './i18n.js';
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 
@@ -74,6 +74,14 @@ function validateBackup(data){
       entry.boundWorkIds.every(id=>id!==entry.id&&data.library.some(work=>work?.id===id)))))||!hasUniqueIds(data.library)){
   throw Error('備份中的資料庫內容不正確');
  }
+}
+
+async function mapLibraryAttachments(entries, transform){
+ return Promise.all(entries.map(async work=>({...work,items:await Promise.all(work.items.map(async item=>{
+  if(!item.values)return item;
+  const values=await Promise.all(Object.entries(item.values).map(async ([key,value])=>[key,await transform(value)]));
+  return {...item,values:Object.fromEntries(values)};
+ }))})));
 }
 
 function WorkBindings({work, library, categories, onChange, t}){
@@ -184,7 +192,12 @@ export default function App(){
    if(libraryVersion.current===null){notify(t("無法讀取資料庫，請確認後端已啟動"));return false}
    librarySaving.current=true;
    try{
-    const snapshot=await libraryRequest({method:'PUT',body:{entries,categories,version:libraryVersion.current}});
+    const payload=await mapLibraryAttachments(entries,async value=>{
+     if(!fileValue(value))return value;
+     const {id}=await uploadLibraryAttachment(value.data);
+     return {name:value.name,attachmentId:id};
+    });
+    const snapshot=await libraryRequest({method:'PUT',body:{entries:payload,categories,version:libraryVersion.current}});
     libraryVersion.current=snapshot.version;
     setLibrary(snapshot.entries);setLibraryCategories(snapshot.categories??categories);
     setLibrarySelected(current=>snapshot.idMappings?.find(mapping=>mapping.previousId===current)?.id??current);
@@ -295,7 +308,16 @@ export default function App(){
   {renderItemActions(x)}
  </article>;
  const downloadJson=(data,filename)=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),500)};
- const exportBackup=()=>downloadJson({format:'storyloom-backup-v1',exportedAt:new Date().toISOString(),stories:localStories,activeId:localStories.some(s=>s.id===active)?active:localStories[0]?.id??null,messages:Object.fromEntries(Object.entries(allMessages).filter(([id])=>localStories.some(s=>s.id===id))),library,libraryCategories},'storyloom-backup-'+new Date().toISOString().slice(0,10)+'.json');
+ const exportBackup=async()=>{
+  try{
+   const entries=await mapLibraryAttachments(library,async value=>{
+    if(!attachmentReference(value))return value;
+    const {data}=await readLibraryAttachment(value.attachmentId);
+    return {name:value.name,data};
+   });
+   downloadJson({format:'storyloom-backup-v1',exportedAt:new Date().toISOString(),stories:localStories,activeId:localStories.some(s=>s.id===active)?active:localStories[0]?.id??null,messages:Object.fromEntries(Object.entries(allMessages).filter(([id])=>localStories.some(s=>s.id===id))),library:entries,libraryCategories},'storyloom-backup-'+new Date().toISOString().slice(0,10)+'.json');
+  }catch{notify(t("無法下載附件"))}
+ };
  const importBackup=async()=>{try{const data=JSON.parse(importText);validateBackup(data);if(!window.confirm(t("匯入將覆蓋目前瀏覽器中的故事及資料庫。請先匯出備份，確定繼續？")))return;if(!await changeLibrary(()=>data.library,data.libraryCategories??DEFAULT_LIBRARY_CATEGORIES))return;setStories(data.stories.map(story=>({storyLanguage:'zh-TW',...story})));setActive(data.stories.some(x=>x.id===data.activeId)?data.activeId:data.stories[0]?.id??null);selectCategory(null);setAllMessages(data.messages);setDraftInputs({});setImportText('');notify(t("已還原備份"))}catch(e){notify(e instanceof SyntaxError?t("備份格式不正確"):t(e.message||"匯入失敗"))}};
  useEffect(()=>{
   if(!useStoryApi)return;
@@ -481,5 +503,5 @@ export default function App(){
  <div className="library-items">{matchingItems.length?
   <ViewEntries view={activeView} items={isChapterCategory?sortChapters(matchingItems):matchingItems} renderCard={renderLibraryItem} renderActions={renderItemActions} t={t}/>:
   <div className="library-blank">{t(itemQuery.trim()?"找不到符合的資料。":"此分類尚無資料。")}</div>}</div></>}
-</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>5*1024*1024){notify(t("檔案超過 5MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
+</>:<div className="library-detail-empty">{t("選擇左側資料，查看世界觀、角色與設定。")}</div>}</div></div></>:<><div className="workspace-top"><div><h1>{t("備份與結算")}</h1><p>{t("備份、匯入及故事結算紀錄。")}</p></div></div><div className="library-tabs"><button className={archiveView==='backup'?'selected':''} onClick={()=>setArchiveView('backup')}>{t("資料備份")}</button><button className={archiveView==='ending'?'selected':''} onClick={()=>setArchiveView('ending')}>{t("故事結算")}</button></div>{archiveView==='backup'?<div className="archive-panels"><div className="archive-card"><h2>{t("匯出完整備份")}</h2><p>{t("下載目前瀏覽器中的故事、對話紀錄及原作／原創資料庫 JSON 檔案。")}</p><button className="primary-action" onClick={exportBackup}>{t("↓ 匯出 JSON 備份")}</button></div><div className="archive-card"><h2>{t("匯入備份")}</h2><p>{t("選擇先前由本網站匯出的 JSON 檔案。匯入會覆蓋目前資料，請先備份。")}</p><input type="file" accept=".json,application/json" onChange={async e=>{const f=e.target.files?.[0];if(f){if(f.size>50*1024*1024){notify(t("檔案超過 50 MB"));return}setImportText(await f.text())}}}/><button className="primary-action" disabled={!importText} onClick={importBackup}>{t("還原備份")}</button></div></div>:<div className="archive-card"><h2>{t("故事結算紀錄")}</h2><p>{t("此區預留故事結局、回合結算與跨卷承接功能。故事引擎尚未接入，目前沒有正式結算紀錄。")}</p><div className="archive-story-count">{t("目前故事數：")}{stories.length}</div></div>}</>}</div>}</main>{contextMenu&&<div className="story-context" role="menu" style={{left:contextMenu.x,top:contextMenu.y}} onClick={e=>e.stopPropagation()}><button role="menuitem" onClick={()=>menuAction('info')}>{t("ⓘ　故事資訊")}</button><button role="menuitem" className="delete-story" onClick={deleteStory}>{t("♲　刪除故事")}</button></div>}{toast&&<div className="toast">{t(toast)}</div>}</div>
 }

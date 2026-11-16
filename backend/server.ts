@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import pg from 'pg';
@@ -85,15 +85,54 @@ function libraryCategoryIds(value: unknown): Set<string> {
   return ids;
 }
 
-function libraryEntries(value: unknown, categories: Set<string>) {
+function validDate(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith('0000')) return false;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function attachmentData(value: unknown) {
+  const data = textField(value, 'file data', 699100, true);
+  if (!/^data:application\/octet-stream;base64,[A-Za-z0-9+/]*={0,2}$/.test(data) ||
+      Buffer.from(data.split(',')[1], 'base64').length > 512 * 1024) {
+    throw new RequestError(400, 'Invalid file data');
+  }
+  return data;
+}
+
+function validateTypedValue(field: {type: string; options?: string}, value: unknown) {
+  if (value === '') return;
+  const options = (field.options ?? '').split(/[,，、]/).map(option => option.trim()).filter(Boolean);
+  let valid = true;
+  switch (field.type) {
+    case 'date': valid = validDate(value); break;
+    case 'number': valid = typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value)); break;
+    case 'checkbox': valid = typeof value === 'boolean'; break;
+    case 'select': valid = typeof value === 'string' && options.includes(value); break;
+    case 'multi': valid = Array.isArray(value) && value.every(option => options.includes(option)); break;
+    case 'url': valid = typeof value === 'string' && /^https?:\/\//i.test(value) && URL.canParse(value); break;
+    case 'media': valid = (!!value && typeof value === 'object' && !Array.isArray(value)) ||
+      (typeof value === 'string' && /^https?:\/\//i.test(value) && URL.canParse(value)); break;
+    case 'text': case 'longText': valid = typeof value === 'string'; break;
+  }
+  if (!valid) throw new RequestError(400, 'Invalid ' + field.type + ' field value');
+}
+
+function libraryEntries(value: unknown, categories: Set<string>, previousEntries: Array<{
+  id: string; type: string; boundWorkIds?: string[]; items: Array<{id: string; values?: Record<string, unknown>}>
+}>) {
   if (!Array.isArray(value)) throw new RequestError(400, 'Invalid library');
   const ids = new Set<string>();
+  const previous = new Map(previousEntries.map(entry => [entry.id, entry]));
+  const workTypes = new Map<string,string>();
   for (const entry of value) {
     if (!entry || typeof entry !== 'object' || !Array.isArray(entry.items) ||
         !categories.has(entry.type)) throw new RequestError(400, 'Invalid library entry');
     const id = textField(entry.id, 'id', 100, true);
     if (ids.has(id)) throw new RequestError(400, 'Duplicate library ID');
     ids.add(id);
+    workTypes.set(id,entry.type);
+    const previousItems = new Map(previous.get(id)?.items.map(item=>[item.id,item]));
     textField(entry.name, 'name', 500, true);
     textField(entry.description, 'description', 20000);
     if (entry.introItemId !== undefined && entry.introItemId !== null) {
@@ -161,15 +200,20 @@ function libraryEntries(value: unknown, categories: Set<string>) {
         if (!item.values || typeof item.values !== 'object' || Array.isArray(item.values)) {
           throw new RequestError(400, 'Invalid field values');
         }
-        for (const value of Object.values(item.values)) {
+        const view = entry.views?.find((view: {id: string}) => view.id === item.category);
+        for (const [key,value] of Object.entries(item.values)) {
+          const field = view?.fields.find((field: {id: string}) => field.id === key);
+          if (field && JSON.stringify(value) !== JSON.stringify(previousItems.get(itemId)?.values?.[key])) {
+            validateTypedValue(field,value);
+          }
           if (Array.isArray(value)) {
             for (const option of value) textField(option, 'field option', 2000);
           } else if (value && typeof value==='object') {
-            const file=value as {name?: unknown; data?: unknown};
+            const file=value as {name?: unknown; data?: unknown; attachmentId?: unknown};
             textField(file.name,'file name',255,true);
-            const data=textField(file.data,'file data',699100,true);
-            if (!/^data:application\/octet-stream;base64,[A-Za-z0-9+/]*={0,2}$/.test(data)) {
-              throw new RequestError(400, 'Invalid file data');
+            if (file.attachmentId === undefined) attachmentData(file.data);
+            else if (typeof file.attachmentId !== 'string' || !/^[a-f0-9]{64}$/.test(file.attachmentId)) {
+              throw new RequestError(400, 'Invalid attachment ID');
             }
           } else if (typeof value !== 'boolean') textField(value, 'field value', 2000);
         }
@@ -191,7 +235,8 @@ function libraryEntries(value: unknown, categories: Set<string>) {
     if (entry.boundWorkIds === undefined) continue;
     const targets = entry.boundWorkIds;
     if (!Array.isArray(targets) || new Set(targets).size !== targets.length ||
-        targets.some(id => typeof id !== 'string' || id === entry.id || !ids.has(id))) {
+        targets.some(id => typeof id !== 'string' || id === entry.id || !ids.has(id) ||
+          (workTypes.get(id)===entry.type && !previous.get(entry.id)?.boundWorkIds?.includes(id)))) {
       throw new RequestError(400, 'Invalid bound work IDs');
     }
   }
@@ -220,6 +265,19 @@ export function createStoryServer(db: Database) {
     try {
       const path = request.url?.split('?')[0];
       const method = request.method;
+      if (path === '/api/library/attachments' && method === 'POST') {
+        const body = await readBody(request, 704000);
+        const data = attachmentData(body.data);
+        const id = createHash('sha256').update(data).digest('hex');
+        await db.query('INSERT INTO library_attachments (id,data) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING',[id,data]);
+        return respond(response, 201, {id});
+      }
+      const attachmentId = path?.match(/^\/api\/library\/attachments\/([a-f0-9]{64})$/)?.[1];
+      if (attachmentId && method === 'GET') {
+        const {rows} = await db.query('SELECT data FROM library_attachments WHERE id=$1',[attachmentId]);
+        if (!rows[0]) throw new RequestError(404, 'Attachment not found');
+        return respond(response, 200, rows[0]);
+      }
       if (path === '/api/library' && method === 'GET') {
         const { rows } = await db.query('SELECT entries, categories, version FROM workspace_library WHERE id=1');
         return respond(response, 200, rows[0]);
@@ -234,7 +292,15 @@ export function createStoryServer(db: Database) {
         )).rows[0];
         if (current?.version !== version) throw new RequestError(409, 'Library changed. Reload before saving again.');
         const nextCategories = categories === undefined ? current.categories : categories;
-        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories))) as Array<{id: string; boundWorkIds?: string[]}>;
+        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories), current.entries)) as Array<{id: string; boundWorkIds?: string[]; items: Array<{values?: Record<string,unknown>}>}>;
+        const attachmentIds = new Set<string>();
+        for (const entry of validated) for (const item of entry.items) for (const value of Object.values(item.values??{})) {
+          if (value && typeof value==='object' && 'attachmentId' in value) attachmentIds.add(value.attachmentId as string);
+        }
+        if (attachmentIds.size) {
+          const {rows} = await db.query('SELECT id FROM library_attachments WHERE id=ANY($1::text[])',[[...attachmentIds]]);
+          if (rows.length!==attachmentIds.size) throw new RequestError(400, 'Attachment not found');
+        };
         const existingIds = new Set<string>(current.entries.map((entry: {id: string}) => entry.id));
         const reservedIds = new Set([...existingIds, ...validated.map(entry => entry.id)]);
         const idMappings: Array<{previousId: string; id: string}> = [];
