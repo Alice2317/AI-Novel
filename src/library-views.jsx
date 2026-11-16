@@ -63,6 +63,8 @@ export function validViews(views) {
     view.fields.every(field => typeof field?.id === 'string' && /^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal|title|content)$/.test(field.id) &&
       typeof field.name === 'string' && !!field.name.trim() && field.name.length <= 100 &&
       [...fieldTypes,...legacyTypes].some(([type]) => type === field.type) &&
+      ['aiEnabled','scheduleEnabled'].every(key=>field[key]===undefined||typeof field[key]==='boolean') &&
+      ['aiPrompt','scheduleTask'].every(key=>field[key]===undefined||(typeof field[key]==='string'&&field[key].length<=4000)) &&
       (field.options===undefined||(typeof field.options==='string'&&field.options.length<=2000)))
   );
 }
@@ -101,8 +103,8 @@ export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
         <option value="table">{t('表格')}</option><option value="cards">{t('卡片')}</option>
       </select></label>
       <div className="view-toggle-row">
-        <label className="view-check"><input type="checkbox" checked={draft.group} onChange={e=>patch({group:e.target.checked})}/>{t('開啟分組')}</label>
-        <label className="view-check"><input type="checkbox" checked={draft.keywords!==false} onChange={e=>patch({keywords:e.target.checked})}/>{t('開啟關鍵字')}</label>
+        <label className="view-check"><input type="checkbox" checked={draft.group} onChange={e=>patch({group:e.target.checked})}/>{t('分組')}</label>
+        <label className="view-check"><input type="checkbox" checked={draft.keywords!==false} onChange={e=>patch({keywords:e.target.checked})}/>{t('關鍵字')}</label>
       </div>
       {draft.group&&<p>{t('啟用後，每筆資料可填寫分組名稱。')}</p>}
       <fieldset><legend>{t('自訂欄位')}</legend>
@@ -111,6 +113,10 @@ export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
           <select aria-label={t('欄位類型')} value={field.type} onChange={e=>updateField(field.id,{type:e.target.value})}>
             {[...fieldTypes,...legacyTypes.filter(([type])=>type===field.type)].map(([type,label])=><option key={type} value={type}>{t(label)}</option>)}
           </select>
+          <div className="view-field-features">
+            {[['aiEnabled','AI'],['scheduleEnabled','排程']].map(([key,label])=><button key={key} type="button"
+              aria-pressed={field[key]===true} onClick={()=>updateField(field.id,{[key]:!field[key]})}>{t(label)}</button>)}
+          </div>
           <button type="button" aria-label={t('移除欄位')} onClick={()=>patch({fields:draft.fields.filter(item=>item.id!==field.id)})}>×</button>
           {optionTypes.includes(field.type)&&<label className="view-field-options">{t('選項（用逗號分隔）')}<input maxLength={2000}
             value={field.options||''} onChange={e=>updateField(field.id,{options:e.target.value})}/></label>}

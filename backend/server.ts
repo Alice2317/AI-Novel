@@ -172,6 +172,14 @@ function libraryEntries(value: unknown, categories: Set<string>, previousEntries
           fieldIds.add(field.id);
           textField(field.name, 'field name', 100, true);
           if (field.options !== undefined) textField(field.options, 'field options', 2000);
+          for (const key of ['aiEnabled','scheduleEnabled']) {
+            if (field[key] !== undefined && typeof field[key] !== 'boolean') {
+              throw new RequestError(400, 'Invalid field feature flag');
+            }
+          }
+          for (const key of ['aiPrompt','scheduleTask']) {
+            if (field[key] !== undefined) textField(field[key], key, 4000);
+          }
         }
       }
     }

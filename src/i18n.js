@@ -5,6 +5,12 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "排程": "Schedule",
+  "提示詞": "Prompt",
+  "任務說明": "Task description",
+  "設定 AI 需要遵循的提示詞。": "Set the prompt for AI to follow.",
+  "記錄定時任務要做的事，例如查找原作資料。": "Describe a recurring task, such as looking up source material.",
+  "尚未加入欄位。": "No fields added yet.",
   "故事演出": "Story participation",
   "參考資料": "Reference material",
   "重新命名 Chat": "Rename chat",
