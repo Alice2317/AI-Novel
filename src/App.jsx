@@ -68,9 +68,33 @@ function validateBackup(data){
       (item.profile===undefined||(isRecord(item.profile)&&Object.entries(item.profile).every(
        ([key,value])=>characterFields.some(([field])=>field===key)&&typeof value==='string'
       ))))&&
-    hasUniqueIds(entry.items))||!hasUniqueIds(data.library)){
+    hasUniqueIds(entry.items)&&
+    (entry.boundWorkIds===undefined||(Array.isArray(entry.boundWorkIds)&&
+      new Set(entry.boundWorkIds).size===entry.boundWorkIds.length&&
+      entry.boundWorkIds.every(id=>id!==entry.id&&data.library.some(work=>work?.id===id)))))||!hasUniqueIds(data.library)){
   throw Error('備份中的資料庫內容不正確');
  }
+}
+
+function WorkBindings({work, library, categories, onChange, t}){
+ const [category,setCategory]=useState('');
+ const ids=work.boundWorkIds||[];
+ const options=library.filter(item=>item.type===category&&item.id!==work.id&&!ids.includes(item.id));
+ return <fieldset><legend>{t("綁定")}</legend>
+  <label>{t("資料分類")}<select value={category} onChange={e=>setCategory(e.target.value)}>
+   <option value="">{t("無")}</option>
+   {categories.map(item=><option key={item.id} value={item.id}>{t(item.name)}</option>)}
+  </select></label>
+  <label>{t("作品")}<select value="" disabled={!category} onChange={e=>{if(e.target.value)onChange([...ids,e.target.value])}}>
+   <option value="">{t("無")}</option>
+   {options.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+  </select></label>
+  <div className="library-tags">{ids.map(id=><span className="library-tag" key={id}>
+   {library.find(item=>item.id===id)?.name||id}
+   <button type="button" aria-label={t("解除綁定")+' '+(library.find(item=>item.id===id)?.name||id)}
+    onClick={()=>onChange(ids.filter(value=>value!==id))}>×</button>
+  </span>)}</div>
+ </fieldset>;
 }
 
 export default function App(){
@@ -149,8 +173,13 @@ export default function App(){
  },[]);
  const changeLibrary=async (change,categories=libraryCategories)=>{
   if(librarySaving.current)return false;
-  const entries=change(library).map(work=>work.introItemId&&!work.items.some(item=>item.id===work.introItemId)
-   ?{...work,introItemId:null}:work);
+  const next=change(library);
+  const ids=new Set(next.map(work=>work.id));
+  const entries=next.map(work=>({
+   ...work,
+   ...(work.introItemId&&!work.items.some(item=>item.id===work.introItemId)?{introItemId:null}:{}),
+   ...(work.boundWorkIds?{boundWorkIds:work.boundWorkIds.filter(id=>ids.has(id))}:{}),
+  }));
   if(useStoryApi){
    if(libraryVersion.current===null){notify(t("無法讀取資料庫，請確認後端已啟動"));return false}
    librarySaving.current=true;
@@ -187,8 +216,7 @@ export default function App(){
   if(libraryType===category.id)selectCategory(null);
  };
  const activeLibrary=library.find(x=>x.id===librarySelected);
- const introItem=activeLibrary?.items.find(item=>item.id===activeLibrary.introItemId);
- const itemLabel=item=>item.title?.trim()||item.id;
+ const boundWorks=(activeLibrary?.boundWorkIds||[]).map(id=>library.find(work=>work.id===id)).filter(Boolean);
 
  const saveView=async()=>{
   const name=viewDraft.name.trim();
@@ -435,14 +463,10 @@ export default function App(){
    return {...current,values:{...current.values,[field.id]:value}};
   })}/>)}
  {libraryEdit.category==='原作篇章／大綱'&&<label>{t("篇章排序")}<input type="number" min="1" step="1" max="1000000" value={libraryEdit.order??''} onChange={e=>setLibraryEdit(p=>({...p,order:e.target.value}))}/></label>}
- <button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介（綁定分頁資料）")}<select value={libraryEdit.introItemId??''} onChange={e=>setLibraryEdit(p=>({...p,introItemId:e.target.value||null}))}>
- <option value="">{t("未綁定")}</option>
- {viewsFor(libraryEdit).map(view=>{
-  const items=libraryEdit.items.filter(item=>item.category===view.id);
-  return items.length>0&&<optgroup key={view.id} label={t(view.name)}>{items.map(item=><option key={item.id} value={item.id}>{itemLabel(item)} · {item.id}</option>)}</optgroup>;
- })}
- </select></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><small className="library-work-id">ID: {activeLibrary.id}</small>
- {introItem?<p><button type="button" className="outline" onClick={()=>setLibraryCategory(introItem.category)}>{itemLabel(introItem)}</button></p>:<p>{t("尚未綁定簡介")}</p>}</div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
+ <button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><WorkBindings key={libraryEdit.id} work={libraryEdit} library={library} categories={libraryCategories} t={t}
+ onChange={boundWorkIds=>setLibraryEdit(current=>({...current,boundWorkIds}))}/><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><small className="library-work-id">ID: {activeLibrary.id}</small>
+ {boundWorks.length>0&&<div className="library-tags">{boundWorks.map(work=><button type="button" className="outline" key={work.id}
+ onClick={()=>{selectCategory(work.type);setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryMobileDetail(true)}}>{work.name}</button>)}</div>}</div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
  <button className="library-add-view" title={t("新增分頁")} aria-label={t("新增分頁")} onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,customFields:true,fields:[{...titleField}]})}>＋</button>
  {libraryViews.map(view=><div className={'library-view-tab'+(libraryCategory===view.id?' selected':'')} key={view.id}>
   <button className={libraryCategory===view.id?'selected':''} onClick={()=>setLibraryCategory(view.id)}>{t(view.name)}</button>

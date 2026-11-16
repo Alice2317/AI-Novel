@@ -5,6 +5,10 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "綁定": "Linked works",
+  "無": "None",
+  "作品": "Work",
+  "解除綁定": "Unlink",
   "簡介（綁定分頁資料）": "Introduction (linked entry)",
   "未綁定": "Unlinked",
   "尚未綁定簡介": "No introduction linked",

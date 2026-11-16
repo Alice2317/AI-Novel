@@ -187,6 +187,14 @@ function libraryEntries(value: unknown, categories: Set<string>) {
       }
     }
   }
+  for (const entry of value) {
+    if (entry.boundWorkIds === undefined) continue;
+    const targets = entry.boundWorkIds;
+    if (!Array.isArray(targets) || new Set(targets).size !== targets.length ||
+        targets.some(id => typeof id !== 'string' || id === entry.id || !ids.has(id))) {
+      throw new RequestError(400, 'Invalid bound work IDs');
+    }
+  }
   return JSON.stringify(value);
 }
 
@@ -226,16 +234,21 @@ export function createStoryServer(db: Database) {
         )).rows[0];
         if (current?.version !== version) throw new RequestError(409, 'Library changed. Reload before saving again.');
         const nextCategories = categories === undefined ? current.categories : categories;
-        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories))) as Array<{id: string}>;
+        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories))) as Array<{id: string; boundWorkIds?: string[]}>;
         const existingIds = new Set<string>(current.entries.map((entry: {id: string}) => entry.id));
+        const reservedIds = new Set([...existingIds, ...validated.map(entry => entry.id)]);
         const idMappings: Array<{previousId: string; id: string}> = [];
         for (const entry of validated) {
           if (existingIds.has(entry.id)) continue;
           let id = randomUUID();
-          while (existingIds.has(id)) id = randomUUID();
-          existingIds.add(id);
+          while (reservedIds.has(id)) id = randomUUID();
+          reservedIds.add(id);
           idMappings.push({previousId:entry.id,id});
           entry.id = id;
+        }
+        const remapped = new Map(idMappings.map(({previousId,id})=>[previousId,id]));
+        for (const entry of validated) {
+          if (entry.boundWorkIds) entry.boundWorkIds = entry.boundWorkIds.map(id=>remapped.get(id)??id);
         }
         const { rows } = await db.query(
           'UPDATE workspace_library SET entries=$1, categories=$2, version=version+1 WHERE id=1 AND version=$3 RETURNING entries, categories, version',
