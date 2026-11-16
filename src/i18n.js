@@ -5,6 +5,9 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "簡介（綁定分頁資料）": "Introduction (linked entry)",
+  "未綁定": "Unlinked",
+  "尚未綁定簡介": "No introduction linked",
   "單選": "Single select",
   "布林": "Boolean",
   "檔案": "File",

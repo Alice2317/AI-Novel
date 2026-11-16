@@ -59,7 +59,7 @@ function validateBackup(data){
     (entry.characterFields===undefined||(Array.isArray(entry.characterFields)&&
       new Set(entry.characterFields).size===entry.characterFields.length&&
       entry.characterFields.every(key=>characterFields.some(([field])=>field===key))))&&categories.some(category=>category.id===entry.type)&&
-    Array.isArray(entry.items)&&entry.items.every(item=>
+    Array.isArray(entry.items)&&(entry.introItemId==null||entry.items.some(item=>item?.id===entry.introItemId))&&entry.items.every(item=>
       hasTextFields(item,['id','category','title','content'])&&viewsFor(entry).some(view=>view.id===item.category)&&
       (item.values===undefined||(isRecord(item.values)&&Object.values(item.values).every(value=>typeof value==='string'||typeof value==='boolean'||(Array.isArray(value)&&value.every(text=>typeof text==='string'))||fileValue(value))))&&
       (item.keywords===undefined||typeof item.keywords==='string'||(Array.isArray(item.keywords)&&item.keywords.length<=50&&item.keywords.every(tag=>typeof tag==='string'&&tag.trim()&&tag.length<=500)))&&
@@ -149,7 +149,8 @@ export default function App(){
  },[]);
  const changeLibrary=async (change,categories=libraryCategories)=>{
   if(librarySaving.current)return false;
-  const entries=change(library);
+  const entries=change(library).map(work=>work.introItemId&&!work.items.some(item=>item.id===work.introItemId)
+   ?{...work,introItemId:null}:work);
   if(useStoryApi){
    if(libraryVersion.current===null){notify(t("無法讀取資料庫，請確認後端已啟動"));return false}
    librarySaving.current=true;
@@ -157,12 +158,14 @@ export default function App(){
     const snapshot=await libraryRequest({method:'PUT',body:{entries,categories,version:libraryVersion.current}});
     libraryVersion.current=snapshot.version;
     setLibrary(snapshot.entries);setLibraryCategories(snapshot.categories??categories);
+    setLibrarySelected(current=>snapshot.idMappings?.find(mapping=>mapping.previousId===current)?.id??current);
+    return snapshot;
    }catch(error){
     notify(t(error.status===409?"資料庫已變更，請重新整理再儲存":"無法儲存到資料庫"));
     return false;
    }finally{librarySaving.current=false}
   }else{setLibrary(entries);setLibraryCategories(categories)}
-  return true;
+  return {entries,idMappings:[]};
  };
  const selectCategory=id=>{
   setLibraryType(id);setLibrarySelected(null);setLibraryEdit(null);setLibraryMobileDetail(false);setLibraryQuery('');
@@ -184,6 +187,9 @@ export default function App(){
   if(libraryType===category.id)selectCategory(null);
  };
  const activeLibrary=library.find(x=>x.id===librarySelected);
+ const introItem=activeLibrary?.items.find(item=>item.id===activeLibrary.introItemId);
+ const itemLabel=item=>item.title?.trim()||item.id;
+
  const saveView=async()=>{
   const name=viewDraft.name.trim();
   const fields=viewDraft.fields.map(field=>({...field,name:field.name.trim()}));
@@ -211,8 +217,16 @@ export default function App(){
  const matchingItems=categoryItems.filter(item=>itemMatches({...item,title:activeView?.fields.some(field=>field.id==='title')?item.title:undefined,content:activeView?.fields.some(field=>field.id==='content')?item.content:undefined,keywords:activeView?.keywords===false?undefined:item.keywords},itemQuery));
  const isChapterCategory=libraryCategory==='原作篇章／大綱';
  const filteredLibrary=library.filter(x=>x.type===libraryType&&(x.name.toLowerCase().includes(libraryQuery.toLowerCase())||x.description?.toLowerCase().includes(libraryQuery.toLowerCase())));
- const newLibrary=()=>{const item={id:'LIB-'+Date.now(),type:libraryType,name:'',description:'',items:[],views:[]};setLibraryEdit(item);setLibrarySelected(null);setLibraryMobileDetail(true)};
- const saveLibrary=async()=>{if(!libraryEdit?.name.trim()){notify(t("請輸入名稱"));return}const item={...libraryEdit,name:libraryEdit.name.trim()};if(!await changeLibrary(p=>p.some(x=>x.id===item.id)?p.map(x=>x.id===item.id?item:x):[item,...p]))return;setLibrarySelected(item.id);setLibraryEdit(null);notify(t("資料已儲存"))};
+ const newLibrary=()=>{const item={id:crypto.randomUUID(),type:libraryType,name:'',description:'',items:[],views:[]};setLibraryEdit(item);setLibrarySelected(null);setLibraryMobileDetail(true)};
+ const saveLibrary=async()=>{
+  if(!libraryEdit?.name.trim()){notify(t("請輸入名稱"));return}
+  const item={...libraryEdit,name:libraryEdit.name.trim()};
+  const saved=await changeLibrary(entries=>entries.some(work=>work.id===item.id)
+   ?entries.map(work=>work.id===item.id?item:work):[item,...entries]);
+  if(!saved)return;
+  setLibrarySelected(saved.idMappings?.find(mapping=>mapping.previousId===item.id)?.id??item.id);
+  setLibraryEdit(null);notify(t("資料已儲存"));
+ };
  const removeLibrary=async work=>{
   if(!window.confirm(t("確定刪除「")+work.name+t("」及其中所有資料？此操作無法復原。")))return;
   if(!await changeLibrary(entries=>entries.filter(entry=>entry.id!==work.id)))return;
@@ -396,7 +410,7 @@ export default function App(){
  {categoryDraft&&<CategoryDialog draft={categoryDraft} setDraft={setCategoryDraft} onClose={()=>setCategoryDraft(null)} onSave={saveCategory} t={t}/>}
  <div className="library-grid"><div className="library-collection"><div className="library-search-row"><input className="library-search" value={libraryQuery} onChange={e=>setLibraryQuery(e.target.value)} placeholder={t("搜尋名稱或描述…")} aria-label={t("搜尋資料庫")}/><button type="button" className="primary-action library-add-work" title={t("＋ 新增作品")} aria-label={t("＋ 新增作品")} onClick={newLibrary} disabled={!activeCategory}>＋</button></div><div className="library-collection-list">{filteredLibrary.length?filteredLibrary.map(work=><div key={work.id} className={'library-work-row'+(librarySelected===work.id?' selected':'')}>
  <button className="library-work-select" onClick={()=>{setLibrarySelected(work.id);setLibraryCategory('世界觀');setLibraryEdit(null);setLibraryMobileDetail(true)}}>
-  <b>{work.name}</b><small>{(work.items||[]).length} {t("筆資料")}</small>
+  <b>{work.name}</b><small className="library-work-id">ID: {work.id}</small><small>{(work.items||[]).length} {t("筆資料")}</small>
  </button>
  <div className="library-head-actions">
   <button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")+' '+work.name} onClick={()=>{setLibrarySelected(work.id);setLibraryEdit({...work});setLibraryMobileDetail(true)}}>✎</button>
@@ -421,7 +435,14 @@ export default function App(){
    return {...current,values:{...current.values,[field.id]:value}};
   })}/>)}
  {libraryEdit.category==='原作篇章／大綱'&&<label>{t("篇章排序")}<input type="number" min="1" step="1" max="1000000" value={libraryEdit.order??''} onChange={e=>setLibraryEdit(p=>({...p,order:e.target.value}))}/></label>}
- <button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介")}<textarea rows="5" value={libraryEdit.description} onChange={e=>setLibraryEdit(p=>({...p,description:e.target.value}))}/></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><p>{activeLibrary.description||t("尚無簡介")}</p></div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
+ <button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介（綁定分頁資料）")}<select value={libraryEdit.introItemId??''} onChange={e=>setLibraryEdit(p=>({...p,introItemId:e.target.value||null}))}>
+ <option value="">{t("未綁定")}</option>
+ {viewsFor(libraryEdit).map(view=>{
+  const items=libraryEdit.items.filter(item=>item.category===view.id);
+  return items.length>0&&<optgroup key={view.id} label={t(view.name)}>{items.map(item=><option key={item.id} value={item.id}>{itemLabel(item)} · {item.id}</option>)}</optgroup>;
+ })}
+ </select></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{t(activeCategory?.name||"資料庫")}</small><h2>{activeLibrary.name}</h2><small className="library-work-id">ID: {activeLibrary.id}</small>
+ {introItem?<p><button type="button" className="outline" onClick={()=>setLibraryCategory(introItem.category)}>{itemLabel(introItem)}</button></p>:<p>{t("尚未綁定簡介")}</p>}</div><div className="library-head-actions"><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
  <button className="library-add-view" title={t("新增分頁")} aria-label={t("新增分頁")} onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,customFields:true,fields:[{...titleField}]})}>＋</button>
  {libraryViews.map(view=><div className={'library-view-tab'+(libraryCategory===view.id?' selected':'')} key={view.id}>
   <button className={libraryCategory===view.id?'selected':''} onClick={()=>setLibraryCategory(view.id)}>{t(view.name)}</button>

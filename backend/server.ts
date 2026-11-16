@@ -96,6 +96,12 @@ function libraryEntries(value: unknown, categories: Set<string>) {
     ids.add(id);
     textField(entry.name, 'name', 500, true);
     textField(entry.description, 'description', 20000);
+    if (entry.introItemId !== undefined && entry.introItemId !== null) {
+      const introId = textField(entry.introItemId, 'intro item ID', 100, true);
+      if (!entry.items.some((item: {id?: string} | null) => item?.id === introId)) {
+        throw new RequestError(400, 'Introduction item must belong to this work');
+      }
+    }
     if (entry.characterFields !== undefined) {
       const fields = entry.characterFields;
       if (!Array.isArray(fields) || new Set(fields).size !== fields.length ||
@@ -215,15 +221,28 @@ export function createStoryServer(db: Database) {
         if (typeof version !== 'number' || !Number.isInteger(version) || version < 1 || version >= 2147483647) {
           throw new RequestError(400, 'Invalid version');
         }
-        const nextCategories = categories ?? (await db.query(
-          'SELECT categories FROM workspace_library WHERE id=1',
-        )).rows[0]?.categories;
+        const current = (await db.query(
+          'SELECT entries, categories, version FROM workspace_library WHERE id=1',
+        )).rows[0];
+        if (current?.version !== version) throw new RequestError(409, 'Library changed. Reload before saving again.');
+        const nextCategories = categories === undefined ? current.categories : categories;
+        const validated = JSON.parse(libraryEntries(entries, libraryCategoryIds(nextCategories))) as Array<{id: string}>;
+        const existingIds = new Set<string>(current.entries.map((entry: {id: string}) => entry.id));
+        const idMappings: Array<{previousId: string; id: string}> = [];
+        for (const entry of validated) {
+          if (existingIds.has(entry.id)) continue;
+          let id = randomUUID();
+          while (existingIds.has(id)) id = randomUUID();
+          existingIds.add(id);
+          idMappings.push({previousId:entry.id,id});
+          entry.id = id;
+        }
         const { rows } = await db.query(
           'UPDATE workspace_library SET entries=$1, categories=$2, version=version+1 WHERE id=1 AND version=$3 RETURNING entries, categories, version',
-          [libraryEntries(entries, libraryCategoryIds(nextCategories)), JSON.stringify(nextCategories), version],
+          [JSON.stringify(validated), JSON.stringify(nextCategories), version],
         );
         if (!rows[0]) throw new RequestError(409, 'Library changed. Reload before saving again.');
-        return respond(response, 200, rows[0]);
+        return respond(response, 200, {...rows[0],idMappings});
       }
       if (path === '/api/stories' && method === 'GET') {
         const result = await db.query(`SELECT ${columns} FROM stories ORDER BY updated_at DESC, id`);

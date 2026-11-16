@@ -134,3 +134,5 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 .library-search-row .library-add-work{padding:0 10px;font-size:17px;line-height:1}
 
 .view-toggle-row{display:flex;flex-wrap:nowrap;gap:18px;align-items:center;white-space:nowrap}
+
+.library-work-id{display:block;font-size:10px;color:#a6aabd;overflow-wrap:anywhere}
