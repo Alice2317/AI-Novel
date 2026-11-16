@@ -5,6 +5,11 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "單選": "Single select",
+  "布林": "Boolean",
+  "檔案": "File",
+  "連結": "Link",
+  "檔案大小上限為 512 KB": "Maximum file size is 512 KB.",
   "新增分類": "New category",
   "編輯分類": "Edit category",
   "刪除分類": "Delete category",

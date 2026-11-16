@@ -132,3 +132,5 @@ html,body,#root{height:100%;margin:0;overflow:hidden} .app{height:100dvh;min-hei
 .library-search-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
 .library-search-row .library-search{min-width:0}
 .library-search-row .library-add-work{padding:0 10px;font-size:17px;line-height:1}
+
+.view-toggle-row{display:flex;flex-wrap:nowrap;gap:18px;align-items:center;white-space:nowrap}

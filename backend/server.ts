@@ -112,7 +112,8 @@ function libraryEntries(value: unknown, categories: Set<string>) {
         if (!view || !['cards','table'].includes(view.layout) || typeof view.group !== 'boolean' ||
             (view.keywords !== undefined && typeof view.keywords !== 'boolean') ||
             (view.showContent !== undefined && typeof view.showContent !== 'boolean') ||
-            !Array.isArray(view.fields) || view.fields.length > 30) throw new RequestError(400, 'Invalid view');
+            (view.customFields !== undefined && typeof view.customFields !== 'boolean') ||
+            !Array.isArray(view.fields) || view.fields.length > 32) throw new RequestError(400, 'Invalid view');
         const viewId = textField(view.id, 'view ID', 100, true);
         if (categoryIds.has(viewId)) throw new RequestError(400, 'Duplicate view ID');
         categoryIds.add(viewId);
@@ -120,7 +121,7 @@ function libraryEntries(value: unknown, categories: Set<string>) {
         const fieldIds = new Set<string>();
         for (const field of view.fields) {
           if (!field || typeof field.id !== 'string' ||
-              !/^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal)$/.test(field.id) ||
+              !/^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal|title|content)$/.test(field.id) ||
               !['text','longText','number','select','multi','status','date','person','media','checkbox','url'].includes(field.type) ||
               fieldIds.has(field.id)) throw new RequestError(400, 'Invalid field');
           fieldIds.add(field.id);
@@ -138,7 +139,7 @@ function libraryEntries(value: unknown, categories: Set<string>) {
       if (!categoryIds.has(item.category)) {
         throw new RequestError(400, 'Invalid library category');
       }
-      textField(item.title, 'title', 500, true);
+      textField(item.title, 'title', 500, !entry.views?.find((view: {id: string}) => view.id === item.category)?.customFields);
       textField(item.content, 'content', 50000);
       if (Array.isArray(item.keywords)) {
         if (item.keywords.length > 50) throw new RequestError(400, 'Too many keywords');
@@ -157,6 +158,13 @@ function libraryEntries(value: unknown, categories: Set<string>) {
         for (const value of Object.values(item.values)) {
           if (Array.isArray(value)) {
             for (const option of value) textField(option, 'field option', 2000);
+          } else if (value && typeof value==='object') {
+            const file=value as {name?: unknown; data?: unknown};
+            textField(file.name,'file name',255,true);
+            const data=textField(file.data,'file data',699100,true);
+            if (!/^data:application\/octet-stream;base64,[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+              throw new RequestError(400, 'Invalid file data');
+            }
           } else if (typeof value !== 'boolean') textField(value, 'field value', 2000);
         }
       }
