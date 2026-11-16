@@ -170,8 +170,8 @@ export default function App(){
   setKeywordInput('');
  };
  const categoryItems=(activeLibrary?.items||[]).filter(item=>item.category===libraryCategory);
- const itemSearchLabel=t(activeView?.keywords===false?"搜尋標題或內文…":"搜尋標題、關鍵字或內文…");
- const matchingItems=categoryItems.filter(item=>itemMatches(activeView?.keywords===false?{...item,keywords:undefined}:item,itemQuery));
+ const itemSearchLabel=t("搜尋資料…");
+ const matchingItems=categoryItems.filter(item=>itemMatches({...item,content:activeView?.showContent===false?undefined:item.content,keywords:activeView?.keywords===false?undefined:item.keywords},itemQuery));
  const isChapterCategory=libraryCategory==='原作篇章／大綱';
  const filteredLibrary=library.filter(x=>x.type===libraryType&&(x.name.toLowerCase().includes(libraryQuery.toLowerCase())||x.description?.toLowerCase().includes(libraryQuery.toLowerCase())));
  const newLibrary=()=>{const item={id:'LIB-'+Date.now(),type:libraryType,name:'',description:'',items:[]};setLibraryEdit(item);setLibrarySelected(null);setLibraryMobileDetail(true)};
@@ -203,7 +203,7 @@ export default function App(){
    {activeView.fields.some(field=>fieldValue(x,field)!=='')&&<dl className="character-fields">
     {activeView.fields.filter(field=>fieldValue(x,field)!=='').map(field=>
      <div key={field.id}><dt>{t(field.name)}</dt><dd>{displayValue(x,field,t)}</dd></div>)}</dl>}
-   {x.content?<LibraryContent content={x.content}/>:<p>{t("尚無內容")}</p>}
+   {activeView.showContent!==false&&(x.content?<LibraryContent content={x.content}/>:<p>{t("尚無內容")}</p>)}
   </div>
   {renderItemActions(x)}
  </article>;
@@ -352,7 +352,7 @@ export default function App(){
   field={field} value={fieldValue(libraryEdit,field)} t={t}
   onChange={value=>setLibraryEdit(current=>({...current,values:{...current.values,[field.id]:value}}))}/>)}
  {libraryEdit.category==='原作篇章／大綱'&&<label>{t("篇章排序")}<input type="number" min="1" step="1" max="1000000" value={libraryEdit.order??''} onChange={e=>setLibraryEdit(p=>({...p,order:e.target.value}))}/></label>}
- <label>{t(libraryEdit.category==='角色資料'?"描述":"內容")}<textarea rows="9" value={libraryEdit.content} onChange={e=>setLibraryEdit(p=>({...p,content:e.target.value}))}/></label><button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介")}<textarea rows="5" value={libraryEdit.description} onChange={e=>setLibraryEdit(p=>({...p,description:e.target.value}))}/></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{libraryType==='source'?t("原作資料"):t("原創資料")}</small><h2>{activeLibrary.name}</h2><p>{activeLibrary.description||t("尚無簡介")}</p></div><div className="library-head-actions"><button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")} onClick={()=>setLibraryEdit({...activeLibrary})}>✎</button><button title={t("刪除")} aria-label={t("刪除")} onClick={removeLibrary}>♲</button><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
+ {editingView&&editingView.showContent!==false&&<label>{t(libraryEdit.category==='角色資料'?"描述":"內容")}<textarea rows="9" value={libraryEdit.content} onChange={e=>setLibraryEdit(p=>({...p,content:e.target.value}))}/></label>}<button className="primary-action" onClick={saveLibraryItem}>{t("儲存資料")}</button></>:<><label>{t("名稱")}<input value={libraryEdit.name} onChange={e=>setLibraryEdit(p=>({...p,name:e.target.value}))} placeholder={t("例如：作品名稱／原創世界名稱")}/></label><label>{t("簡介")}<textarea rows="5" value={libraryEdit.description} onChange={e=>setLibraryEdit(p=>({...p,description:e.target.value}))}/></label><button className="primary-action" onClick={saveLibrary}>{t("儲存")}</button></>}</div>:activeLibrary?<><div className="library-detail-head"><div><small>{libraryType==='source'?t("原作資料"):t("原創資料")}</small><h2>{activeLibrary.name}</h2><p>{activeLibrary.description||t("尚無簡介")}</p></div><div className="library-head-actions"><button title={t("編輯基本資訊")} aria-label={t("編輯基本資訊")} onClick={()=>setLibraryEdit({...activeLibrary})}>✎</button><button title={t("刪除")} aria-label={t("刪除")} onClick={removeLibrary}>♲</button><button className="mobile-library-close" onClick={()=>setLibraryMobileDetail(false)}>×</button></div></div><div className="library-categories">
  <button className="library-add-view" onClick={()=>setViewDraft({name:'',layout:'table',group:false,keywords:false,fields:[]})}>{t("＋新增")}</button>
  {libraryViews.map(view=><div className={'library-view-tab'+(libraryCategory===view.id?' selected':'')} key={view.id}>
   <button className={libraryCategory===view.id?'selected':''} onClick={()=>setLibraryCategory(view.id)}>{t(view.name)}</button>

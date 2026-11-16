@@ -5,6 +5,13 @@ export function readInterfaceLanguage(){
 }
 
 const english={
+  "基本欄位": "Basic fields",
+  "姓名（必填）": "Name (required)",
+  "名稱（必填）": "Title (required)",
+  "顯示描述": "Show description",
+  "顯示內容": "Show content",
+  "多行文字": "Multiline text",
+  "搜尋資料…": "Search entries…",
   "開啟關鍵字": "Enable keywords",
   "搜尋標題或內文…": "Search titles or content…",
   "＋新增": "＋ New",

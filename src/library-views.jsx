@@ -3,7 +3,7 @@ import { enabledCharacterFields, keywordTags, LibraryContent } from './library-c
 
 export const categories = ['世界觀','角色資料','人物關係','原作篇章／大綱','設定與規則','參考文件'];
 export const fieldTypes = [
-  ['text','文字'], ['number','數字'], ['select','選取'], ['multi','多選'],
+  ['text','文字'], ['longText','多行文字'], ['number','數字'], ['select','選取'], ['multi','多選'],
   ['status','狀態'], ['date','日期'], ['person','人員'], ['media','檔案和媒體'],
   ['checkbox','核取方塊'], ['url','網址'],
 ];
@@ -27,6 +27,7 @@ export function validViews(views) {
     typeof view.name === 'string' && !!view.name.trim() && view.name.length <= 100 &&
     ['cards','table'].includes(view.layout) && typeof view.group === 'boolean' &&
     (view.keywords === undefined || typeof view.keywords === 'boolean') &&
+    (view.showContent === undefined || typeof view.showContent === 'boolean') &&
     Array.isArray(view.fields) && view.fields.length <= 30 &&
     new Set(view.fields.map(field => field?.id)).size === view.fields.length &&
     view.fields.every(field => typeof field?.id === 'string' && /^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal)$/.test(field.id) &&
@@ -59,6 +60,11 @@ export function ViewDialog({ draft, setDraft, onSave, onClose, t }) {
       <label className="view-check"><input type="checkbox" checked={draft.group} onChange={e=>patch({group:e.target.checked})}/>{t('開啟分組')}</label>
       {draft.group&&<p>{t('啟用後，每筆資料可填寫分組名稱。')}</p>}
       <label className="view-check"><input type="checkbox" checked={draft.keywords!==false} onChange={e=>patch({keywords:e.target.checked})}/>{t('開啟關鍵字')}</label>
+      <fieldset><legend>{t('基本欄位')}</legend>
+        <p>{t(draft.id==='角色資料'?'姓名（必填）':'名稱（必填）')}</p>
+        <label className="view-check"><input type="checkbox" checked={draft.showContent!==false} onChange={e=>patch({showContent:e.target.checked})}/>
+          {t(draft.id==='角色資料'?'顯示描述':'顯示內容')}</label>
+      </fieldset>
       <fieldset><legend>{t('自訂欄位')}</legend>
         {draft.fields.map(field=><div className="view-field-row" key={field.id}>
           <input required maxLength={100} aria-label={t('欄位名稱')} placeholder={t('欄位名稱')} value={field.name} onChange={e=>updateField(field.id,{name:e.target.value})}/>
@@ -95,6 +101,8 @@ export function FieldInput({ field, value, onChange, t }) {
     </select></label>;
   }
   const display = Array.isArray(value)?value.join(', '):typeof value==='boolean'?'':value;
+  if(field.type==='longText') return <label>{label}<textarea rows={5} maxLength={2000} value={display}
+    onChange={e=>onChange(e.target.value)}/></label>;
   return <label>{label}<input type={inputType} step={field.type==='number'?'any':undefined} maxLength={500}
     placeholder={field.type==='media'?t('貼上檔案網址'):field.type==='multi'?t('用逗號分隔'):undefined}
     value={display} onChange={e=>onChange(e.target.value)}/></label>;
@@ -107,15 +115,15 @@ export function displayValue(item, field, t) {
   if ((field.type==='url'||field.type==='media') && /^https?:\/\//i.test(value)) {
     return <a href={value} target="_blank" rel="noreferrer">{field.type==='media'?t('開啟檔案'):value}</a>;
   }
-  return String(value);
+  return field.type==='longText'?<span style={{whiteSpace:'pre-wrap'}}>{String(value)}</span>:String(value);
 }
 
 export function ViewEntries({ view, items, renderCard, renderActions, t }) {
   const renderItems = rows => view.layout === 'table' ? <div className="library-table-scroll"><table className="library-view-table">
-    <thead><tr><th scope="col">{t('名稱')}</th>{view.keywords!==false&&<th scope="col">{t('關鍵字')}</th>}{view.fields.map(field=><th key={field.id} scope="col">{t(field.name)}</th>)}<th scope="col">{t('內容')}</th><th scope="col">{t('操作')}</th></tr></thead>
+    <thead><tr><th scope="col">{t(view.id==='角色資料'?'姓名':'名稱')}</th>{view.keywords!==false&&<th scope="col">{t('關鍵字')}</th>}{view.fields.map(field=><th key={field.id} scope="col">{t(field.name)}</th>)}{view.showContent!==false&&<th scope="col">{t(view.id==='角色資料'?'描述':'內容')}</th>}<th scope="col">{t('操作')}</th></tr></thead>
     <tbody>{rows.map(item=><tr key={item.id}><th scope="row">{item.title}</th>{view.keywords!==false&&<td>{keywordTags(item.keywords).map(tag=>'#'+tag).join(' ')}</td>}
       {view.fields.map(field=><td key={field.id}>{displayValue(item,field,t)}</td>)}
-      <td>{item.content&&<LibraryContent content={item.content}/>}</td><td><div className="library-item-actions">{renderActions(item)}</div></td></tr>)}</tbody>
+      {view.showContent!==false&&<td>{item.content&&<LibraryContent content={item.content}/>}</td>}<td><div className="library-item-actions">{renderActions(item)}</div></td></tr>)}</tbody>
   </table></div> : <div className="library-view-cards">{rows.map(renderCard)}</div>;
   if (!view.group) return renderItems(items);
   const groups = new Map();

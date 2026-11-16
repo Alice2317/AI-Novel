@@ -98,6 +98,7 @@ function libraryEntries(value: unknown) {
       for (const view of entry.views) {
         if (!view || !['cards','table'].includes(view.layout) || typeof view.group !== 'boolean' ||
             (view.keywords !== undefined && typeof view.keywords !== 'boolean') ||
+            (view.showContent !== undefined && typeof view.showContent !== 'boolean') ||
             !Array.isArray(view.fields) || view.fields.length > 30) throw new RequestError(400, 'Invalid view');
         const viewId = textField(view.id, 'view ID', 100, true);
         if (categoryIds.has(viewId)) throw new RequestError(400, 'Duplicate view ID');
@@ -107,7 +108,7 @@ function libraryEntries(value: unknown) {
         for (const field of view.fields) {
           if (!field || typeof field.id !== 'string' ||
               !/^(field-[\da-f-]{36}|affiliation|species|rank|abilities|equipment|appearance|reveal)$/.test(field.id) ||
-              !['text','number','select','multi','status','date','person','media','checkbox','url'].includes(field.type) ||
+              !['text','longText','number','select','multi','status','date','person','media','checkbox','url'].includes(field.type) ||
               fieldIds.has(field.id)) throw new RequestError(400, 'Invalid field');
           fieldIds.add(field.id);
           textField(field.name, 'field name', 100, true);
